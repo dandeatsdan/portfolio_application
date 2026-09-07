@@ -1,10 +1,12 @@
-# Upstream Portfolio Scenario Modelling – Software Learning Prototype
+# Upstream Portfolio Scenario Modelling — coding-agent guidance
 
 ## Purpose of this file
 
 This file provides persistent project context and working instructions for Claude Code or another AI coding agent operating on the software-application experiment.
 
 Read this file before proposing or making changes.
+
+Last reviewed: 7 September 2026, against repository commit `e26d69cfa89f0032f4694e3aa87e7ec22f5c049e`. Current-state statements below describe that snapshot; inspect the latest affected code before acting.
 
 This work is a **post-project learning experiment**. The DT603 degree submission is complete and should be treated as a fixed reference implementation and evidence base. The purpose of the software experiment is to learn how the validated Scenario Modelling Framework could be expressed as a more conventional software application, not to rewrite the submitted project or imply that a new production system is being delivered.
 
@@ -41,34 +43,22 @@ Portfolio optimisation remains a possible later learning exercise. It is **not**
 
 ## 2. Current project status
 
-The degree project produced a validated working Framework with two principal components:
+The original DT603 implementation combines a governed Power BI semantic model with an Excel application using Python in Excel, Power Query, DAX/Power Pivot, and VBA. Its architecture, working artefacts, business validation, and project evidence remain the reference base.
 
-1. **Governed Semantic Model Data Layer**
-2. **Scenario Modelling Application**
+Subsequent application development is already present:
 
-The Scenario Modelling Application was implemented in Excel using:
+| Area | Current implementation |
+| --- | --- |
+| `00_semantic_model/` | Original governed data-preparation layer and sanitised working artefact. |
+| `01_excel_application/` | Original Excel implementation, including six extracted Python blocks. |
+| `07_streamlit_app/` | Packaged Python engine, representative CSV data, automated tests, and active four-screen Streamlit application. |
+| `08_react_app/` | React frontend and FastAPI backend using the Python package and sample data from `07_streamlit_app`. |
 
-- Python-in-Excel for the analytical engine;
-- Power Query for controlled data movement and output capture;
-- DAX / Power Pivot for analytical views;
-- VBA for navigation, refresh sequencing, calculation-state control, and application orchestration.
+All 12 dispatch operations in the committed Excel Python library exist in the shared web library. One targeted synthetic example per operation produced matching dataframes during the gap review. This is limited evidence of operation parity, not full regression, UI, workbook, or business validation.
 
-The final project also included:
+The complete Excel execution pipeline has **not** been ported. Current gaps include post-tax calculations, the Excel discounting convention, complete preparation/validation diagnostics, fail-safe publication, multiple-scenario orchestration, and result metadata. React also removes parameters and run timestamps from its scenario response.
 
-- controlled financial scope and calculated-member derivation;
-- financial entity to modelling case translation;
-- controlled manual-profile integration;
-- standardised scenario instructions;
-- a reusable operations library;
-- operation-specific validation;
-- contextual model logging;
-- fail-safe scenario-output publication;
-- post-tax and discounted-cash-flow processing;
-- performance and scalability testing;
-- business and SME validation;
-- a sanitised repository containing representative datasets and code.
-
-The software application should therefore be treated as a **new interface and software-engineering experiment around a validated analytical pattern**, not as a greenfield reinvention of the business logic.
+Do not describe either web application or its entire engine as validated merely because it reuses the original methodology. Preserve the original project artefacts as reference material; do not modify them as a side effect of web-app work.
 
 ---
 
@@ -112,6 +102,8 @@ When information conflicts, use this order of precedence:
 
 The software prototype is never the source of truth merely because its implementation is newer.
 
+Distinguish intended business behaviour from what is actually implemented. For implementation claims, inspect executable code and the active call path, not comments, README assertions, or the mere presence of a data file. If approved behaviour, metadata, extracted Python, and workbook behaviour disagree, identify the discrepancy rather than silently choosing a new rule.
+
 Where possible, inspect the final repository rather than duplicating rules into this file.
 
 Important reference locations in the final repository include:
@@ -126,6 +118,8 @@ Important reference locations in the final repository include:
 ```
 
 Key application references include the final operation metadata, scenario-instruction code, operations library, model engine, user guide, and architecture diagrams.
+
+The [Excel-to-web gap review](08_react_app/Excel-Python-to-Web-Application-Gap-Review.md) records source comparisons and targeted synthetic checks. Treat it as a dated diagnostic baseline, not proof that later code still has the same gaps. Reference G01–G12 when implementing a corresponding fix, and record the evidence needed to close it.
 
 If a business rule is unclear, record the uncertainty and ask for clarification.
 
@@ -153,67 +147,37 @@ If branding is used, prefer a restrained visual theme. Do not add proprietary br
 
 ---
 
-## 6. Core analytical model
+## 6. Core analytical contracts
 
-### 6.1 Preferred analytical grain
+### 6.1 Inputs and keys
 
-The analytical engine should normally work with tidy/tall data.
+- Case-listing required columns: `ID`, `Case`, `Group Entity`, `Segment`, `Region`, `Country`, `Plan Type`, `Case Name`, and `Country Key`.
+- Tall profiles: `ID`, `Case`, `Metric`, `Year`, and `Value`, with uniqueness at `ID × Metric × Year`.
+- Tax inputs: `Country`, `Country Key`, `Year`, `ETR`, and `CTR`, with uniqueness at `Country Key × Year`.
+- Scenario instructions: scenario identifier, case identifier, inclusion, operation key, and `Param1`–`Param5`, with case labels retained for context.
 
-A representative scenario-output grain is:
+Distinguish full `Case` from display `Case Name`. Excel validates uniqueness of `ID` and full `Case`; do not assume the shorter display label is a stable unique identifier. Derive exact contracts from the current source before changing joins.
 
-```text
-Scenario
-Scenario Name
-ID
-Case
-Case Name
-Group Entity
-Segment
-Region
-Country
-Plan Type
-Operation
-Param1
-Param2
-Param3
-Param4
-Param5
-Metric
-Year
-Value
-RunDateTime
-```
+### 6.2 Output contract
 
-Exact columns should be derived from the final validated repository rather than assumed.
-
-### 6.2 Planning horizon
-
-The validated Framework primarily uses the planning horizon:
+Excel's published tall output includes:
 
 ```text
-2026–2040
+Scenario, Scenario Name, Scenario Description,
+ID, Case, Case Name, Group Entity, Segment, Region, Country, Country Key, Plan Type,
+Operation, Param1, Param2, Param3, Param4, Param5,
+Metric, Year, Value, RunDateTime
 ```
 
-Do not change the horizon globally without checking the operation logic, source-data preparation, tax reference data, and output expectations.
+The shared web engine currently emits a smaller schema: scenario, ID, Case, operation, five parameters, metric, year, value, and timestamp. React further reduces the rows at its API boundary. Do not confuse the target Excel contract with the current web response.
 
-### 6.3 Metrics
+### 6.3 Horizon and metric names
 
-The Framework supports financial and production measures required by the validated planning workflow.
+The model horizon is **2026–2040**. Check operation logic, source profiles, tax coverage, discounting, and output expectations before changing it.
 
-Examples include:
+Use exact source keys, including `Total Production (mboed)`, `Total Cash Costs`, `Cash Capex`, `Underlying RCOP`, `Pre Tax Cash Flow`, `Post-Tax RCOP`, `Post-Tax Cash Flow`, `Tax Charge`, and `Cash Tax Payment`. These are examples, not a complete metric catalogue. A display label such as “Production” or “FCF” is not automatically a valid source key.
 
-- Production;
-- Gross Margin;
-- Cash Costs;
-- Cash Capex;
-- Underlying RCOP;
-- Pre-Tax Cash Flow;
-- Post-Tax RCOP;
-- Post-Tax Free Cash Flow;
-- Tax Charge;
-- Cash Tax Payment.
-
-Do not create or rename metrics casually. Metric names, signs, and downstream dependencies are part of the domain model.
+Do not casually rename metrics or change signs, units, precision, or aggregation rules. Inspect operation dependencies and the metrics helper; convert values for display without mutating analytical values. Profile preparation in Excel rounds to six decimal places, while the web loader currently does not. Treat that as an explicit parity decision.
 
 ---
 
@@ -304,7 +268,7 @@ The validated library includes treatments across areas such as:
 - truncation;
 - production and cost adjustments.
 
-Some price-related concepts were explored during the project but were deliberately constrained or deferred where the business methodology was not sufficiently validated.
+Neither the committed Excel dispatch table nor the shared web dispatch table contains a price operation. Do not infer an implemented price capability from earlier discussions or the root README's broader wording. A price operation, chance-of-success treatment, or optimisation feature needs its own confirmed scope and methodology.
 
 ### Operation rules
 
@@ -325,158 +289,147 @@ Do not infer missing financial behaviour from the name of an operation.
 
 ---
 
-## 11. Financial calculations
+## 11. Financial calculations and parity requirements
 
-Financial calculations must remain separate from UI code.
+Keep financial calculations in reusable Python services, separate from UI rendering. The shared web engine currently ends after operations and horizon clipping; the following describes the Excel reference behaviour to reproduce when that migration is requested.
 
-The validated engine includes downstream financial-processing stages, including post-tax and discounted-cash-flow logic.
+### Post-tax calculation
 
-Important principles:
+After applying operations, Excel:
 
-- preserve stable baseline values;
-- keep transformations and derived calculations distinguishable;
-- do not double-count impacts;
-- make recalculation order explicit;
-- preserve metric sign conventions;
-- keep external assumptions separate from stable calculation logic;
-- validate joins by country/key/year where applicable;
-- fail clearly when required reference data is missing.
+1. Adds scenario and case metadata through validated many-to-one joins.
+2. Joins ETR and CTR by `Country Key × Year`.
+3. Requires `Underlying RCOP` and `Pre Tax Cash Flow`, and checks tax-rate coverage on RCOP rows.
+4. Uses `max(Underlying RCOP, 0)` as its taxable base.
+5. Generates negative `Tax Charge` and `Cash Tax Payment` rows using ETR and CTR respectively.
+6. Generates `Post-Tax RCOP` by subtracting tax charge magnitude from RCOP.
+7. Matches cash tax to cash flow on `Scenario × ID × Year`, using a validated one-to-one join, then generates `Post-Tax Cash Flow`.
+8. Records unmatched cash-flow rows and uses zero cash tax for those unmatched rows.
 
-### Tax limitation
+Preserve these specific assumptions unless the user requests and confirms a business-method change. Do not replace them with an inferred country fiscal model.
 
-The validated project demonstrated a post-tax architecture, but representative tax assumptions are **not equivalent to validated country fiscal models**.
+### Discounting
 
-Do not imply otherwise.
-
-If tax logic is migrated, the software application should preserve the separation between:
-
-- external tax assumptions/reference data; and
-- stable analytical calculation logic.
-
----
-
-## 12. Target software architecture
-
-The analytical engine should be independent of the UI.
-
-A sensible learning-oriented structure is:
+Excel generates `Discounted Post-Tax Cash Flow @ 8%` with:
 
 ```text
-software_app/
-├── app.py
-├── pyproject.toml
-├── README.md
-├── src/
-│   └── scenario_modeller/
-│       ├── __init__.py
-│       ├── domain/
-│       │   ├── models.py
-│       │   └── validation.py
-│       ├── data/
-│       │   ├── loaders.py
-│       │   ├── schemas.py
-│       │   └── mappings.py
-│       ├── engine/
-│       │   ├── instructions.py
-│       │   ├── operations.py
-│       │   ├── financials.py
-│       │   ├── scenario_engine.py
-│       │   └── outputs.py
-│       ├── services/
-│       │   ├── scenario_service.py
-│       │   └── comparison_service.py
-│       ├── persistence/
-│       │   └── scenario_store.py
-│       └── ui/
-│           ├── layout.py
-│           ├── components.py
-│           └── pages/
-├── data/
-│   ├── sample/
-│   └── templates/
-├── notebooks/
-├── tests/
-└── docs/
+period = Year - 2026 + 1
+discounted value = Post-Tax Cash Flow / (1.08 ** period)
 ```
 
-This is a guide, not a requirement to create every file immediately.
+2026 is period 1. Downstream DAX sums the annual discounted rows for NPV.
 
-Create modules incrementally.
+React's current portfolio API instead discounts **pre-tax** cash flow using a selectable rate and `Year - year_from`, where the first selected year is period 0. This is a different calculation basis, not a completed migration of Excel post-tax NPV. Streamlit's cumulative-contribution function is not a discounted-cash-flow calculation.
 
-### UI technology
+Use the same declared calculation basis for reference and scenario comparisons. Prevent double-counting derived metrics already present in input files.
 
-Streamlit is acceptable for the first learning prototype because it enables rapid iteration.
+### Tax assumptions and validation
 
-However:
+Representative tax inputs are modelling examples, not validated country fiscal models. Preserve the separation between reference assumptions and calculation logic. Check rate completeness, 0–1 bounds, unique country/year keys, coverage, and join cardinality.
 
-- Streamlit is not the source of truth for analytical logic;
-- do not embed business rules in widget callbacks;
-- keep page code thin;
-- engine functions should be callable from tests without Streamlit;
-- state should be explicit rather than hidden in page code.
-
-If a different UI technology is explored later, the analytical engine should not need to be rewritten.
+A tax CSV and a loader exist in the web package, but neither active application currently connects them to scenario financial processing. Do not mark a calculation implemented merely because its input file exists.
 
 ---
 
-## 13. Application workflow
+## 12. Current software architecture and commands
 
-A useful software workflow is:
+Use the existing structure; do not scaffold a second application or duplicate the calculation engine.
 
-1. **Home**
-   - application status;
-   - current baseline;
-   - latest run;
-   - validation state.
+| Path | Responsibility |
+| --- | --- |
+| `07_streamlit_app/app.py` | Streamlit entry point using `st.navigation` and `st.Page`. |
+| `07_streamlit_app/app_pages/` | Active Streamlit screens. |
+| `07_streamlit_app/pages/` | Older pages; not the active navigation configured by `app.py`. |
+| `07_streamlit_app/src/scenario_modeller/data/` | CSV loaders and schemas. |
+| `07_streamlit_app/src/scenario_modeller/domain/` | Domain models. |
+| `07_streamlit_app/src/scenario_modeller/engine/` | Shared operations and scenario execution. |
+| `07_streamlit_app/src/scenario_modeller/services/` | Portfolio and comparison services. |
+| `07_streamlit_app/src/scenario_modeller/ui/` | Streamlit state helpers and theme. |
+| `07_streamlit_app/data/sample/` | Six sample CSVs used by the application work. |
+| `07_streamlit_app/tests/` | Current loader, NoChange, and Delay tests. |
+| `07_streamlit_app/design_decks/` | Horizon X PDF and PowerPoint design reference. |
+| `08_react_app/backend/` | FastAPI application, request/response schemas, data loading, and analytical routers. |
+| `08_react_app/frontend/src/` | React pages, components, contexts, hooks, and API client. |
 
-2. **Data**
-   - baseline data;
-   - modelling-case mapping;
-   - manual profiles;
-   - reference assumptions.
+The FastAPI backend imports the `scenario-modeller` package from the sibling Streamlit directory and reads that directory's sample data. Keep the sibling layout unless an explicitly scoped refactor updates all dependencies. The Streamlit **server** is not required to run React.
 
-3. **Scenario Builder**
-   - scenario metadata;
-   - case selection;
-   - operation selection;
-   - operation parameters;
-   - contextual decision-support information.
+New instruction-preparation, financial, validation, or output services should extend the shared package when they serve both applications. Existing portfolio calculations in API routers should be considered when establishing shared financial services; do not create competing financial definitions.
 
-4. **Validate**
-   - configuration completeness;
-   - data issues;
-   - mapping issues;
-   - operation-specific validation.
+### Streamlit
 
-5. **Run Scenario**
-   - explicit execution;
-   - progress/status;
-   - model log.
+Use Python 3.10+ in an activated environment. From the repository root:
 
-6. **Results**
-   - baseline versus scenario;
-   - scenario-to-scenario;
-   - metric/year filters;
-   - case and business-dimension filters;
-   - tables and charts.
+```bash
+cd 07_streamlit_app
+python -m pip install -e ".[dev]"
+python -m pip install --upgrade streamlit
+python -m streamlit run app.py
+```
 
-7. **Scenario History**
-   - saved configuration;
-   - run metadata;
-   - model version;
-   - validation state;
-   - comments.
+The declared Streamlit minimum currently permits versions older than the navigation APIs used by the entry point. The upgrade step avoids that older installation; aligning the dependency minimum is a separate code/configuration task.
 
-8. **Testing / Validation**
-   - representative reconciliation evidence;
-   - operation test results;
-   - known limitations.
+### React and FastAPI
 
-Do not reproduce the Excel worksheet layout merely for parity. Preserve the workflow and domain behaviour, then use software-native interaction patterns where they improve usability.
+From the repository root, install Python dependencies:
+
+```bash
+python -m pip install -e ./07_streamlit_app
+python -m pip install -r ./08_react_app/backend/requirements.txt
+```
+
+In one terminal, starting at the repository root:
+
+```bash
+cd 08_react_app
+python -m uvicorn backend.main:app --reload --port 8000
+```
+
+In another terminal, starting at the repository root:
+
+```bash
+cd 08_react_app/frontend
+npm ci
+npm run dev
+```
+
+Use Node.js/npm compatible with the checked-in Vite dependency. React is served at `http://localhost:5173`; the development proxy forwards `/api` to port 8000. The health endpoint is `/api/health`, and API documentation is at `/docs`.
+
+Use `backend.main:app` from `08_react_app`: `main:app` from inside `backend` is inconsistent with its package-relative imports.
+
+The checked-in configuration is for local development. A frontend build does not host Python or configure production API routing and browser-route fallbacks.
+
+---
+
+## 13. Active workflow and interface guidance
+
+Both interfaces implement the same four screen names:
+
+| Screen | React route | Purpose |
+| --- | --- | --- |
+| Home | `/` | Application entry point and navigation. |
+| Portfolio Viewer | `/portfolio` | Explore reference data, filter, compare contributors, and shortlist cases. |
+| Build a Scenario | `/build` | Review reference measures, configure cases and parameters, and run. |
+| Scenario Results | `/results` | Compare scenario and reference outputs and inspect applied changes. |
+
+Preserve this established journey unless a redesign is requested. Separate Data, Validate, Scenario History, and Testing screens are possible future concepts, not existing application pages or instructions to build them now.
+
+For UI work, inspect the relevant Horizon X design reference and the application's existing components and theme. Preserve established layout and business-facing terminology; do not add technical implementation detail to user-facing screens without a user need. Keep analytical logic out of widget callbacks and React components.
+
+### Scope and state issues to inspect before changing scenario behaviour
+
+- Streamlit displays shortlisted `working_cl`, but initialises all cases as included and builds run instructions from the full `case_listing`. Hidden cases can remain included. Align the displayed count, instruction IDs, and intended reference/scenario population when fixing this.
+- React passes `workingCases` to its run hook. Do not assume selection semantics are already equivalent between interfaces.
+- Both paths build a reference run from the full case listing. Make the comparison population explicit.
+- Active Streamlit fixes scenario ID to 1; React currently submits one scenario with default ID 1. The shared loop's ability to process multiple IDs is not end-to-end S1–S5 support.
+- React stores scenario configuration in page-local hook state, while shortlist, filters, and the latest result use shared context. Inspect component lifetime before promising configuration persistence across navigation.
+
+These are dated observations, not desired behaviours. Check the latest code and gap review before treating them as open issues.
 
 ---
 
 ## 14. Scenario persistence
+
+Current applications use in-memory state; there is no durable scenario database or saved run history. Do not promise persistence across page reloads or process restarts.
 
 One learning opportunity is removing the worksheet-based limit on scenario storage.
 
@@ -494,7 +447,7 @@ A persisted scenario should never rely only on display labels. Save stable ident
 
 ## 15. Outputs and visualisation
 
-The software application should support:
+The following are design goals, not a statement that every item is currently implemented:
 
 - baseline versus scenario comparison;
 - scenario-to-scenario comparison;
@@ -516,7 +469,23 @@ Avoid overwhelming users with charts. A good analytical table is often more usef
 
 ## 16. Testing strategy
 
-Testing should occur at several levels.
+Current committed tests are in `07_streamlit_app/tests` and focus on loaders, NoChange, and Delay. There is no dedicated React or API test suite in `08_react_app` at this snapshot. The gap review's synthetic probes are reported evidence, not additional committed regression tests.
+
+From `07_streamlit_app`, after installing `.[dev]`, run:
+
+```bash
+python -m pytest tests/
+```
+
+From `08_react_app/frontend`, check bundling with:
+
+```bash
+npm run build
+```
+
+A frontend build is not analytical validation. Use focused regression/integration checks for changed business behaviour, and verify the affected application boundary. Report what actually ran and its limitations. Documentation-only changes require source/path consistency checks rather than a new application test suite.
+
+The levels below guide future validation; they are not a claim that all listed tests or notebooks exist.
 
 ### 16.1 Unit tests
 
@@ -607,6 +576,14 @@ Messages should preserve useful context such as:
 - metric;
 - processing stage.
 
+### Publication contract
+
+Excel marks the run invalid on operation or downstream financial failure and withholds reassignment of its published output. The current shared web engine instead returns successful rows plus errors; both active applications can replace the latest result with that partial output. An error count is not an equivalent publication gate.
+
+When completing this migration, separate candidate diagnostics from a successfully published run, preserve the previous valid result on failure, and provide an explicit validity status to both interfaces. Handle empty/no-output runs deliberately. Retain the web engine's explicit missing-profile errors; the Excel loop silently skips such cases, so parity should not remove that improvement.
+
+Preserve all five parameters, scenario metadata, and run metadata through the API. React currently removes parameters and timestamps; its applied-changes table uses dash placeholders. Return a normalised instruction snapshot rather than reconstructing assumptions from incomplete result rows.
+
 Do not swallow unexpected exceptions silently.
 
 For development, retain technical details in logs while showing a clearer message in the UI.
@@ -656,26 +633,21 @@ When working in this repository:
 
 ---
 
-## 20. Current learning priorities
+## 20. Current implementation priorities
 
-The recommended sequence is:
+Use the [gap review](08_react_app/Excel-Python-to-Web-Application-Gap-Review.md) as the detailed evidence base. Do not restart package scaffolding, remigrate NoChange/Delay, or assume the remaining operations are absent.
 
-1. Inspect the final sanitised datasets and validated Python engine.
-2. Create a minimal software package and test harness.
-3. Load representative baseline data into a clean internal schema.
-4. Recreate modelling-case selection and scenario metadata.
-5. Migrate `NoChange` as the first end-to-end operation.
-6. Migrate one meaningful operation, such as `Delay`, and reconcile it to the validated implementation.
-7. Introduce operation metadata and dynamic parameter forms.
-8. Add scenario validation and structured logging.
-9. Add baseline/scenario result comparison.
-10. Add simple scenario persistence.
-11. Migrate the remaining validated operations incrementally.
-12. Add downstream financial calculations only after operation parity is established.
-13. Explore richer scenario comparison and history.
-14. Explore optimisation only as a separate later learning exercise.
+For a parity-completion task, the recommended order is:
 
-The objective is not to rebuild everything at once.
+1. **Make execution scope reliable.** Align shortlist/inclusion semantics and visible counts; distinguish candidate results from valid published runs (G04 and the shortlist finding).
+2. **Preserve assumptions through React.** Return a normalised instruction snapshot with all five parameters, scenario metadata, and run context (G07, G09, G10).
+3. **Complete shared financial processing.** Add validated tax inputs, post-tax metrics, and the explicit Excel discounting convention after operations (G01–G03).
+4. **Align preparation and diagnostics.** Address text/key cleaning, duplicate Case checks, missing records, precision policy, controlled joins, correction summaries, and model-health reporting (G05–G07, G09, G11).
+5. **Extend scenario orchestration and timing where required.** Support coordinated scenarios and explicit elapsed/timezone-aware run metadata (G08, G12).
+6. **Reconcile the full path.** Compare input preparation, operations, derived metrics, output contracts, failure cases, and the two application boundaries.
+7. **Consider persistence, richer history, or optimisation only when requested and justified.**
+
+These priorities guide a requested implementation task; they do not authorise unrelated changes during a focused task. Keep gap statuses and validation evidence current when a capability is completed.
 
 ---
 
