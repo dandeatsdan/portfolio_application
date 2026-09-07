@@ -28,5 +28,9 @@ Total Cash Costs,Yes
 Total Dividend Received,No
 Total Production (mboed),No
 Underlying RCOP,No
+Tax Charge,Yes
+Cash Tax Payment,Yes
+Post-Tax RCOP,No
+Post-Tax Cash Flow,No
 Working Capital Changes (SEA),No
 

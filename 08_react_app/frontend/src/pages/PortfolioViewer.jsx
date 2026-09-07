@@ -60,8 +60,9 @@ const TOP_N_OPTIONS = [
 ]
 
 const PROD_METRIC = 'Total Production (mboed)'
-const KPI_METRICS = [PROD_METRIC, 'Cash Capex', 'Underlying RCOP', 'Pre Tax Cash Flow']
+const KPI_METRICS = [PROD_METRIC, 'Cash Capex', 'Post-Tax RCOP', 'Post-Tax Cash Flow']
 const DISCOUNT_RATE = 8
+const NPV_METRIC = 'Post-tax NPV'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -233,7 +234,7 @@ export default function PortfolioViewer() {
   const [kpis,          setKpis]          = useState([])
   const [rankedData,    setRankedData]    = useState([])
   const [rankBy,        setRankBy]        = useState('case_name')
-  const [rankMetric,    setRankMetric]    = useState('Pre Tax Cash Flow')
+  const [rankMetric,    setRankMetric]    = useState('Post-Tax Cash Flow')
   const [topN,          setTopN]          = useState('10')
   const [creamData,     setCreamData]     = useState([])
   const [creamGroupBy,  setCreamGroupBy]  = useState('case_name')
@@ -252,7 +253,7 @@ export default function PortfolioViewer() {
 
   useEffect(() => {
     if (!rankMetric) return
-    getRanked(rankMetric, rankBy, Number(topN), filters).then(setRankedData).catch(() => setRankedData([]))
+    getRanked(rankMetric, rankBy, Number(topN), filters, DISCOUNT_RATE).then(setRankedData).catch(() => setRankedData([]))
   }, [rankMetric, rankBy, topN, filters])
 
   useEffect(() => {
@@ -307,16 +308,16 @@ export default function PortfolioViewer() {
           subLabel={`Average $${fmtBn(kpiMap['Cash Capex']?.annual_avg)}bn p.a.`}
         />
         <KpiCard
-          title="Cumulative Underlying RCOP"
-          value={fmtBn(kpiMap['Underlying RCOP']?.total)}
+          title="Cumulative Post-Tax RCOP"
+          value={fmtBn(kpiMap['Post-Tax RCOP']?.total)}
           unit="$bn"
-          subLabel={`Average $${fmtBn(kpiMap['Underlying RCOP']?.annual_avg)}bn p.a.`}
+          subLabel={`Average $${fmtBn(kpiMap['Post-Tax RCOP']?.annual_avg)}bn p.a.`}
         />
         <KpiCard
-          title="Cumulative Free Cash Flow"
-          value={fmtBn(kpiMap['Pre Tax Cash Flow']?.total)}
+          title="Cumulative Post-Tax Free Cash Flow"
+          value={fmtBn(kpiMap['Post-Tax Cash Flow']?.total)}
           unit="$bn"
-          subLabel={`Average $${fmtBn(kpiMap['Pre Tax Cash Flow']?.annual_avg)}bn p.a.`}
+          subLabel={`Average $${fmtBn(kpiMap['Post-Tax Cash Flow']?.annual_avg)}bn p.a.`}
         />
       </div>
 
@@ -324,7 +325,7 @@ export default function PortfolioViewer() {
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <FlexChartPanel metrics={metrics} defaultMetric="Total Production (mboed)" filters={filters} />
         <FlexChartPanel metrics={metrics} defaultMetric="Cash Capex"               filters={filters} />
-        <FlexChartPanel metrics={metrics} defaultMetric="Pre Tax Cash Flow"        filters={filters} />
+        <FlexChartPanel metrics={metrics} defaultMetric="Post-Tax Cash Flow"        filters={filters} />
       </div>
 
       {/* ── Ranked contributors + Creaming curve ── */}
@@ -337,8 +338,9 @@ export default function PortfolioViewer() {
               Ranked Contributors
             </span>
             <Select value={rankBy}     onChange={setRankBy}     options={RANK_BY_OPTIONS} />
-            <Select value={rankMetric} onChange={setRankMetric} options={metrics} style={{ maxWidth: 160 }} />
+            <Select value={rankMetric} onChange={setRankMetric} options={[...metrics, { value: NPV_METRIC, label: `Post-tax NPV @ ${DISCOUNT_RATE}% ($m)` }]} style={{ maxWidth: 210 }} />
             <Select value={topN}       onChange={setTopN}       options={TOP_N_OPTIONS} />
+            {rankMetric === NPV_METRIC && <span style={{ fontSize: 11 }}>Fixed 2026 base; period 1.</span>}
           </div>
 
           <div style={{ overflowY: 'auto', maxHeight: 420 }}>
@@ -371,7 +373,7 @@ export default function PortfolioViewer() {
             <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Discount rate: {DISCOUNT_RATE}%</span>
           </div>
           <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 0.5rem' }}>
-            Ordered by capital efficiency (highest NPV/Capex first).
+            Ordered by capital efficiency (highest post-tax NPV/Capex first). Fixed 2026 base; 2026 is period 1.
           </p>
           {creamData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
@@ -386,10 +388,10 @@ export default function PortfolioViewer() {
                 />
                 <YAxis
                   dataKey="Cum NPV"
-                  name="Cumulative NPV ($m)"
+                  name="Cumulative Post-Tax NPV ($m)"
                   type="number"
                   tick={{ fontSize: 10 }}
-                  label={{ value: 'Cum NPV ($m)', angle: -90, position: 'insideLeft', fontSize: 10 }}
+                  label={{ value: 'Cum Post-Tax NPV ($m)', angle: -90, position: 'insideLeft', fontSize: 10 }}
                 />
                 <Tooltip
                   cursor={{ strokeDasharray: '3 3' }}
@@ -399,7 +401,7 @@ export default function PortfolioViewer() {
                     return (
                       <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 4, padding: '6px 10px', fontSize: 11 }}>
                         <div style={{ fontWeight: 600, marginBottom: 2 }}>{d?.Label}</div>
-                        <div>NPV: ${Number(d?.NPV ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}m</div>
+                        <div>Post-tax NPV: ${Number(d?.NPV ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}m</div>
                         <div>Capex: ${Number(d?.Capex ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}m</div>
                         <div>PI: {Number(d?.PI ?? 0).toFixed(2)}x</div>
                       </div>
@@ -410,7 +412,7 @@ export default function PortfolioViewer() {
               </ScatterChart>
             </ResponsiveContainer>
           ) : (
-            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: '1rem' }}>No data — ensure Pre Tax Cash Flow and Cash Capex metrics are available.</p>
+            <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: '1rem' }}>No data — ensure Post-Tax Cash Flow and Cash Capex metrics are available.</p>
           )}
         </div>
       </div>
@@ -443,7 +445,7 @@ export default function PortfolioViewer() {
           </div>
         </div>
         <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
-          Select cases to shortlist for modification in the scenario builder. Unselected cases are included with no change.
+          Select cases for the scenario builder. Scenario results compare included cases against the full reference portfolio.
         </p>
 
         <div style={{ overflowX: 'auto' }}>
@@ -473,8 +475,8 @@ export default function PortfolioViewer() {
                   { label: 'Country',            align: 'left'   },
                   { label: 'Production (mmboe)', align: 'right'  },
                   { label: 'Capex ($m)',         align: 'right'  },
-                  { label: 'FCF ($m)',           align: 'right'  },
-                  { label: 'NPV ($m)',           align: 'right'  },
+                  { label: 'Post-Tax FCF ($m)',           align: 'right'  },
+                  { label: 'Post-Tax NPV ($m)',           align: 'right'  },
                 ].map(({ label, align }) => (
                   <th key={label} style={{ padding: '7px 8px', textAlign: align, fontWeight: 600, color: 'var(--color-text-muted)', fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</th>
                 ))}

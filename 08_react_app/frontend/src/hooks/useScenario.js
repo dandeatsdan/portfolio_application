@@ -35,6 +35,7 @@ export function useScenario(cases) {
   const [running,     setRunning]     = useState(false)
   const [result,      setResult]      = useState(null)
   const [runError,    setRunError]    = useState(null)
+  const [diagnostics, setDiagnostics] = useState([])
 
   // Initialise case config entries when cases load
   const initCases = useCallback((caseList, selectedIds) => {
@@ -67,6 +68,7 @@ export function useScenario(cases) {
   const run = useCallback(async (allCases) => {
     setRunning(true)
     setRunError(null)
+    setDiagnostics([])
     try {
       const instructions = allCases
         .filter(c => (caseConfig[c.id] ?? defaultCase()).include)
@@ -84,14 +86,16 @@ export function useScenario(cases) {
             param5:    cs.params[4] ?? 0,
           }
         })
-      const data = await runScenario({ scenario_name: name, instructions })
+      const data = await runScenario({ scenario_name: name, scenario_description: description, rationale, instructions })
+      if (!data.valid) throw new Error('Scenario did not produce a valid result.')
       setResult(data)
     } catch (err) {
       setRunError(err.message)
+      setDiagnostics(err.diagnostics ?? [])
     } finally {
       setRunning(false)
     }
-  }, [name, caseConfig])
+  }, [name, description, rationale, caseConfig])
 
   return {
     name, setName,
@@ -99,6 +103,6 @@ export function useScenario(cases) {
     rationale, setRationale,
     caseConfig, initCases, setCaseField, setParam,
     running, run,
-    result, runError,
+    result, runError, diagnostics,
   }
 }

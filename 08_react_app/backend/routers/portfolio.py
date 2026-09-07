@@ -5,7 +5,7 @@ Portfolio endpoints — KPIs, stacked chart data, rankings, creaming curve.
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from ..state import app_state
 from ..utils.display import to_display
 from scenario_modeller.services.portfolio_service import (
@@ -13,12 +13,13 @@ from scenario_modeller.services.portfolio_service import (
     stacked_by_case,
     rank_contributors,
 )
+from scenario_modeller.services.valuation_service import npv_by_case, NPV_METRIC
 
 router = APIRouter(prefix="/api/portfolio")
 
 CASE_COLS = ["ID", "Case Name", "Group Entity", "Segment", "Region", "Country", "Plan Type"]
 
-FCF_METRIC   = "Pre Tax Cash Flow"
+FCF_METRIC   = "Post-Tax Cash Flow"
 CAPEX_METRIC = "Cash Capex"
 
 
@@ -61,6 +62,8 @@ def _filter_profiles(
     year_to: int = 2040,
 ) -> pd.DataFrame:
     """Filter profiles to the given case IDs and year range."""
+    if not 2026 <= year_from <= year_to <= 2040:
+        raise HTTPException(status_code=422, detail="Invalid year range")
     ids = set(case_listing["ID"].tolist())
     df = profiles[profiles["ID"].isin(ids)].copy()
     df = df[(df["Year"] >= year_from) & (df["Year"] <= year_to)]
@@ -73,7 +76,7 @@ def _safe_records(df: pd.DataFrame) -> list:
 
 @router.get("/kpis")
 def get_kpis(
-    metrics:       str = Query(default="Production,Cash Capex,Gross Margin,Pre Tax Cash Flow"),
+    metrics:       str = Query(default="Total Production (mboed),Cash Capex,Post-Tax RCOP,Post-Tax Cash Flow"),
     year_from:     int = Query(default=2026),
     year_to:       int = Query(default=2040),
     plan_types:    str = Query(default=""),
@@ -142,6 +145,7 @@ def get_stacked(
 @router.get("/ranked/{metric}")
 def get_ranked(
     metric:        str,
+    discount_rate: float = Query(default=8.0, gt=-100, allow_inf_nan=False),
     rank_by:       str = Query(default="case_name"),
     top_n:         int = Query(default=20),
     year_from:     int = Query(default=2026),
@@ -154,8 +158,11 @@ def get_ranked(
     case_names:    str = Query(default=""),
 ):
     cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
-    profs = to_display(_filter_profiles(app_state.profiles, cases, year_from, year_to), app_state.invert_metrics)
-    df = profs[profs["Metric"] == metric].copy()
+    profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
+    if metric == NPV_METRIC:
+        df = npv_by_case(profs, discount_rate, year_from, year_to).rename(columns={"NPV": "Value"})
+    else:
+        df = to_display(profs[profs["Metric"] == metric].copy(), app_state.invert_metrics)
 
     COL_MAP = {
         "plan_type":    "Plan Type",
@@ -182,7 +189,7 @@ def get_ranked(
 
 @router.get("/creaming")
 def get_creaming(
-    discount_rate: float = Query(default=8.0),
+    discount_rate: float = Query(default=8.0, gt=-100, allow_inf_nan=False),
     group_by:      str   = Query(default="case_name"),
     year_from:     int   = Query(default=2026),
     year_to:       int   = Query(default=2040),
@@ -196,7 +203,7 @@ def get_creaming(
     """
     Creaming curve: each point is one aggregated unit (case, region, country, or group entity).
     x = cumulative capex, y = cumulative NPV.
-    NPV = sum of discounted FCF: FCF_t / (1 + r)^(t - year_from).
+    NPV uses post-tax cash flow and fixed 2026 period-1 discounting.
     Units sorted by NPV/Capex descending (most efficient first).
     """
     COL_MAP = {
@@ -210,19 +217,9 @@ def get_creaming(
 
     cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
     profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
-    r = discount_rate / 100.0
-
-    def discounted_sum(grp):
-        grp = grp.copy()
-        grp["discount_factor"] = grp["Year"].apply(lambda y: 1.0 / (1 + r) ** (y - year_from))
-        return (grp["Value"] * grp["discount_factor"]).sum()
-
-    # Discounted FCF per case
-    fcf_df = profs[profs["Metric"] == FCF_METRIC].copy()
-    if fcf_df.empty:
+    npv_per_case = npv_by_case(profs, discount_rate, year_from, year_to)
+    if npv_per_case.empty:
         return []
-    npv_per_case = fcf_df.groupby("ID").apply(discounted_sum).reset_index()
-    npv_per_case.columns = ["ID", "NPV"]
 
     # Capex per case — invert sign for display if Cash Capex is in the invert list
     capex_df = profs[profs["Metric"] == CAPEX_METRIC].copy()
@@ -233,7 +230,9 @@ def get_creaming(
     # Merge dimension label from case_listing
     per_case = (
         npv_per_case
-        .merge(capex_per_case, on="ID", how="inner")
+        # Keep every valued case, including cases without capex rows in the
+        # selected window. Their NPV must not vanish from the cumulative total.
+        .merge(capex_per_case, on="ID", how="left")
         .merge(cases[["ID", dim_col]], on="ID", how="inner")
     )
 
@@ -262,7 +261,7 @@ def get_entity_summary(
     regions:       str = Query(default=""),
     countries:     str = Query(default=""),
     case_names:    str = Query(default=""),
-    discount_rate: float = Query(default=8.0),
+    discount_rate: float = Query(default=8.0, gt=-100, allow_inf_nan=False),
 ):
     """
     Per-case summary: Case Name, Plan Type, Region, Country,
@@ -270,7 +269,6 @@ def get_entity_summary(
     """
     cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
     profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
-    r = discount_rate / 100.0
 
     def get_metric_totals(metric):
         df = profs[profs["Metric"] == metric].groupby("ID")["Value"].sum().reset_index()
@@ -285,19 +283,7 @@ def get_entity_summary(
     capex      = get_metric_totals(CAPEX_METRIC)
     fcf        = get_metric_totals(FCF_METRIC)
 
-    # NPV
-    fcf_detail = profs[profs["Metric"] == FCF_METRIC].copy()
-    if not fcf_detail.empty:
-        fcf_detail["discount_factor"] = fcf_detail["Year"].apply(lambda y: 1.0 / (1 + r) ** (y - year_from))
-        npv_df = (
-            (fcf_detail["Value"] * fcf_detail["discount_factor"])
-            .groupby(fcf_detail["ID"])
-            .sum()
-            .reset_index()
-        )
-        npv_df.columns = ["ID", "NPV"]
-    else:
-        npv_df = pd.DataFrame(columns=["ID", "NPV"])
+    npv_df = npv_by_case(profs, discount_rate, year_from, year_to)
 
     summary = cases[["ID", "Case Name", "Plan Type", "Group Entity", "Segment", "Region", "Country"]].copy()
     for df in [production, capex, fcf, npv_df]:

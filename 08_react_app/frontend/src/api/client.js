@@ -9,8 +9,13 @@ const api = axios.create({ baseURL: '/' })
 api.interceptors.response.use(
   res => res.data,
   err => {
-    const msg = err.response?.data?.detail ?? err.message ?? 'Unknown error'
-    return Promise.reject(new Error(msg))
+    const detail = err.response?.data?.detail
+    const msg = typeof detail === 'string' ? detail
+      : detail?.message ?? (Array.isArray(detail) ? detail.map(d => d.msg).join('; ') : null)
+        ?? err.message ?? 'Unknown error'
+    const error = new Error(msg)
+    error.diagnostics = detail?.diagnostics ?? []
+    return Promise.reject(error)
   }
 )
 
@@ -51,11 +56,12 @@ export const getStacked = (metric, groupBy, filters) =>
     },
   })
 
-export const getRanked = (metric, rankBy, topN, filters) =>
+export const getRanked = (metric, rankBy, topN, filters, discountRate = 8) =>
   api.get(`/api/portfolio/ranked/${encodeURIComponent(metric)}`, {
     params: {
       ...(rankBy ? { rank_by: rankBy } : {}),
       ...(topN   ? { top_n:   topN   } : {}),
+      discount_rate: discountRate,
       ...filterParams(filters),
     },
   })
@@ -77,5 +83,6 @@ export const getEntitySummary = (filters, discountRate = 8) =>
 export const runScenario  = (payload) => api.post('/api/scenario/run', payload)
 export const getWaterfall = (payload) => api.post('/api/scenario/waterfall', payload)
 export const getKpiDelta  = (payload) => api.post('/api/scenario/kpi-delta', payload)
+export const getScenarioValuation = (payload) => api.post('/api/scenario/valuation', payload)
 
 export default api

@@ -4,7 +4,7 @@ Pydantic response schemas for the FastAPI backend.
 These define the shape of data returned to the React frontend.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CaseRow(BaseModel):
@@ -65,6 +65,7 @@ class RankedRow(BaseModel):
 
 
 class ScenarioInstruction(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     id: int
     case: str
     include: bool
@@ -79,6 +80,8 @@ class ScenarioInstruction(BaseModel):
 class ScenarioRunRequest(BaseModel):
     scenario_id: int = 1
     scenario_name: str = "Scenario"
+    scenario_description: str = ""
+    rationale: str = ""
     instructions: list[ScenarioInstruction]
 
 
@@ -89,10 +92,19 @@ class ProfileRow(BaseModel):
     year: int
     value: float
     operation: str | None = None
+    scenario: int | None = None
+    run_datetime: str | None = None
 
 
 class ScenarioRunResponse(BaseModel):
+    valid: bool
     scenario_name: str
+    scenario_description: str = ""
+    rationale: str = ""
+    scenario_id: int
+    diagnostics: list[dict] = Field(default_factory=list)
+    instructions: list[ScenarioInstruction] = Field(default_factory=list)
+    valuation: dict = Field(default_factory=dict)
     output_rows: int
     errors: list[dict]
     results: list[ProfileRow]
@@ -110,3 +122,11 @@ class WaterfallRow(BaseModel):
     label: str
     value: float
     type: str  # "absolute" | "relative"
+
+
+class ValuationRequest(BaseModel):
+    baseline: list[ProfileRow]
+    scenario: list[ProfileRow]
+    discount_rate: float = Field(default=8.0, gt=-100, allow_inf_nan=False)
+    year_from: int = Field(default=2026, ge=2026, le=2040)
+    year_to: int = Field(default=2040, ge=2026, le=2040)

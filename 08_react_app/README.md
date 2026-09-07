@@ -87,18 +87,22 @@ Scenario requests carry their instructions in the request body. The backend reta
 
 ## Analytical scope and interpretation
 
-The React portfolio API includes discounted pre-tax cash-flow calculations for entity NPV and creaming analysis. Its creaming curve ranks aggregated units by NPV/capex and plots cumulative capex against cumulative NPV. This differs from the Streamlit screen's cumulative-contribution presentation.
+The React API calculates the baseline's post-tax metrics at startup, before any scenario is run. After scenario operations, the same shared `engine/financials.py` calculation generates `Tax Charge`, `Cash Tax Payment`, `Post-Tax RCOP`, and `Post-Tax Cash Flow`. Raw inputs remain separate; recalculation replaces derived rows rather than taxing them twice. The metrics-helper CSV includes all four metrics, and their Total/Avg5y values are derived in memory.
 
-The shared engine currently has no price operation or post-tax recalculation stage. The scenario API constructs its reference baseline using all cases in the loaded listing, so differences may reflect both operations and omitted cases. Inspect returned case-level errors before relying on aggregate results.
+`services/valuation_service.py` calculates NPV from post-tax cash flow using a fixed 2026 base, with 2026 as period 1. The default rate is 8%; API valuation endpoints accept a rate in percent. Filtering years never resets the discount origin. Entity summaries, the creaming curve, scenario NPV, and the ranking chart's **Post-tax NPV** option share this calculation. NPV is a calculated ranking measure, not an annual profile row to sum again. Creaming ranks by NPV/capex; zero-capex cases have undefined PI, sort last, and remain in cumulative NPV totals.
+
+Tax uses non-negative RCOP with ETR for charges and CTR for cash payments. Tax outputs have negative analytical signs; display inversion is metadata-driven. Missing/invalid RCOP tax rates block publication. As in the Excel source, cash-flow rows without matching RCOP use zero cash tax with diagnostics. Representative tax rates are examples, not production fiscal assumptions.
+
+The scenario reference includes all loaded cases, so differences may reflect both operations and omitted cases. Invalid runs return diagnostics without partial results; React retains the previous successful result and labels it after a failed attempt. State remains in memory. There is still no price operation, and the active Streamlit UI is not wired to the new financial coordinator in this change.
 
 ## Verification and deployment status
 
-To run the existing shared-package tests, start from the repository root:
+To run shared-package and API regression tests, start from the repository root:
 
 ```bash
 python -m pip install -e "./07_streamlit_app[dev]"
-cd 07_streamlit_app
-python -m pytest tests/
+python -m pip install -r 08_react_app/backend/requirements-dev.txt
+python -m pytest 07_streamlit_app/tests 08_react_app/backend/tests -q
 ```
 
 From `08_react_app/frontend`, check the frontend build with:
@@ -107,7 +111,7 @@ From `08_react_app/frontend`, check the frontend build with:
 npm run build
 ```
 
-The committed shared tests cover loaders, NoChange, and Delay. There is no dedicated React or API test suite in this directory. A successful frontend build alone does not establish analytical correctness or end-to-end behaviour.
+Verification on this feature: 70 Python/API tests passed and the frontend production build passed. Tests cover tax signs/rates/joins, repeat calculation, invalid-run withholding, baseline preservation, NoChange reconciliation, fixed-origin discounting and cross-endpoint NPV agreement. The build reports a large-bundle warning. Browser verification was blocked by the preview environment; manually check metric selectors, NPV ranking, year filters, scenario results and previous-result preservation after a failed run before merging. These checks do not establish full workbook parity or validate business tax assumptions.
 
 The checked-in configuration supports local development. A frontend build does not package or host the Python backend; deployment must provide the API, production request routing, and fallback routing for React's browser routes. The Vite development proxy does not configure those production services.
 

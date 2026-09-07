@@ -9,6 +9,25 @@ from __future__ import annotations
 
 import pandas as pd
 
+from scenario_modeller.engine.financials import DERIVED_METRICS
+
+
+def add_derived_totals(totals_avgs: pd.DataFrame, profiles: pd.DataFrame) -> pd.DataFrame:
+    """Replace only derived-metric reference rows; preserve original CSV values.
+
+    Total/Average 5Y use 2026–2030, including zero contribution in absent years.
+    """
+    derived = profiles.loc[profiles["Metric"].isin(DERIVED_METRICS)
+                           & profiles["Year"].between(2026, 2030)]
+    wide = derived.pivot_table(index=["Metric", "Case"], columns="Year",
+                               values="Value", aggfunc="sum", fill_value=0)
+    wide = wide.reindex(columns=range(2026, 2031), fill_value=0)
+    wide.columns = wide.columns.astype(str)
+    wide["Total 5Y"] = wide.sum(axis=1)
+    wide["Average 5Y"] = wide["Total 5Y"] / 5
+    return pd.concat([totals_avgs.loc[~totals_avgs["Metric"].isin(DERIVED_METRICS)],
+                      wide.reset_index()], ignore_index=True)
+
 
 def aggregate_by_year(
     profiles: pd.DataFrame,

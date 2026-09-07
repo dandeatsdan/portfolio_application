@@ -3,13 +3,16 @@ Scenario endpoints — run a scenario and compute comparison/waterfall data.
 """
 
 from fastapi import APIRouter, HTTPException
+import logging
 import pandas as pd
 from ..state import app_state
-from ..schemas import ScenarioRunRequest, ScenarioRunResponse, WaterfallRequest
-from scenario_modeller.engine.scenario_engine import run_scenario
+from ..schemas import ScenarioRunRequest, ScenarioRunResponse, WaterfallRequest, ValuationRequest
+from scenario_modeller.services.scenario_service import execute_scenario
+from scenario_modeller.services.valuation_service import npv_by_case, valuation_basis
 from scenario_modeller.services.comparison_service import build_waterfall, scenario_kpi_delta
 
 router = APIRouter(prefix="/api/scenario")
+logger = logging.getLogger(__name__)
 
 OPERATION_MAP = {
     "No Change":           "NoChange",
@@ -27,7 +30,7 @@ OPERATION_MAP = {
 }
 
 
-@router.post("/run")
+@router.post("/run", response_model=ScenarioRunResponse)
 def run_scenario_endpoint(request: ScenarioRunRequest):
     instructions_rows = []
     for inst in request.instructions:
@@ -47,18 +50,19 @@ def run_scenario_endpoint(request: ScenarioRunRequest):
     instructions_df = pd.DataFrame(instructions_rows)
 
     try:
-        results, errors = run_scenario(app_state.profiles, instructions_df)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    # Baseline: NoChange on all cases
-    baseline_instructions = app_state.case_listing[["ID", "Case"]].copy()
-    baseline_instructions["Scenario"] = 0
-    baseline_instructions["Include"] = True
-    baseline_instructions["Operation"] = "NoChange"
-    for p in ["Param1", "Param2", "Param3", "Param4", "Param5"]:
-        baseline_instructions[p] = 0.0
-    baseline_results, _ = run_scenario(app_state.profiles, baseline_instructions)
+        run = execute_scenario(app_state.raw_profiles, instructions_df,
+                               app_state.case_listing, app_state.tax_rates)
+    except Exception:
+        logger.exception("Unexpected scenario calculation failure")
+        raise HTTPException(status_code=500, detail="Calculation failed; no new results published.")
+    if not run.valid:
+        raise HTTPException(status_code=422, detail={
+            "valid": False, "message": "Scenario failed; no new results published.",
+            "diagnostics": run.diagnostics,
+        })
+    results = run.results
+    # Same enriched reference used by Portfolio Viewer; full-portfolio comparison.
+    baseline_results = app_state.profiles
 
     def _df_to_records(df):
         if df.empty:
@@ -72,13 +76,25 @@ def run_scenario_endpoint(request: ScenarioRunRequest):
                 "year":      int(r.get("Year", 0)),
                 "value":     float(r.get("Value", 0)),
                 "operation": str(r.get("Operation", "")),
+                "scenario": int(r["Scenario"]) if "Scenario" in r else 0,
+                "run_datetime": r.get("RunDateTime", None),
             })
         return rows
 
     return {
+        "valid": True,
+        "scenario_id": request.scenario_id,
         "scenario_name": request.scenario_name,
+        "scenario_description": request.scenario_description,
+        "rationale": request.rationale,
+        "valuation": valuation_basis(),
+        "diagnostics": run.diagnostics + app_state.baseline_diagnostics,
+        "instructions": run.instructions.rename(columns={
+            "ID": "id", "Case": "case", "Include": "include", "Operation": "operation",
+            **{f"Param{i}": f"param{i}" for i in range(1, 6)},
+        }).to_dict("records"),
         "output_rows":   len(results),
-        "errors":        errors,
+        "errors":        [],
         "results":       _df_to_records(results),
         "baseline":      _df_to_records(baseline_results),
     }
@@ -97,14 +113,31 @@ def waterfall_endpoint(request: WaterfallRequest):
         baseline_df, scenario_df, app_state.case_listing,
         request.metric, request.years
     )
-    return wf.to_dict(orient="records")
+    return wf.rename(columns={"Label": "label", "Value": "value", "Type": "type"}).to_dict(orient="records")
+
+
+@router.post("/valuation")
+def scenario_valuation(request: ValuationRequest):
+    def total(rows):
+        df = pd.DataFrame([r.model_dump() for r in rows]).rename(columns={
+            "id": "ID", "metric": "Metric", "year": "Year", "value": "Value",
+        })
+        if df.empty:
+            return 0.0
+        return float(npv_by_case(df, request.discount_rate, request.year_from, request.year_to)["NPV"].sum())
+    try:
+        baseline, scenario = total(request.baseline), total(request.scenario)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"baseline": baseline, "scenario": scenario, "delta": scenario - baseline,
+            "basis": valuation_basis(request.discount_rate)}
 
 
 @router.post("/kpi-delta")
 def kpi_delta_endpoint(request: dict):
     baseline_rows = request.get("baseline", [])
     scenario_rows = request.get("scenario", [])
-    metrics       = request.get("metrics", ["Production", "Pre Tax Cash Flow"])
+    metrics       = request.get("metrics", ["Total Production (mboed)", "Post-Tax Cash Flow"])
     years         = request.get("years", None)
 
     baseline_df = pd.DataFrame(baseline_rows).rename(
