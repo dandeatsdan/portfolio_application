@@ -1,0 +1,30 @@
+REACT APP START-UP INSTRUCTIONS
+================================
+
+You need two separate terminals — one for the backend, one for the frontend.
+Make sure the .venv is activated in each terminal before running.
+
+Activate the virtual environment (run in each terminal):
+  .venv\Scripts\Activate.ps1
+
+
+TERMINAL 1 — BACKEND (FastAPI)
+--------------------------------
+cd 08_react_app
+uvicorn backend.main:app --reload
+
+API will be available at: http://127.0.0.1:8000
+API docs (Swagger) at:    http://127.0.0.1:8000/docs
+
+
+TERMINAL 2 — FRONTEND (React / Vite)
+--------------------------------------
+cd 08_react_app/frontend
+npm run dev
+
+Frontend will be available at: http://localhost:5173
+
+
+NOTE: The backend must use "uvicorn backend.main:app --reload" from the
+08_react_app/ directory (not from inside the backend/ folder). Running it
+from inside backend/ causes relative import errors.

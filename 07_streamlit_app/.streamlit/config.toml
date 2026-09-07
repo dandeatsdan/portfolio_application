@@ -1,0 +1,14 @@
+[theme]
+base = "light"
+
+# Horizon X — BP colour palette (light theme)
+primaryColor             = "#007F00"   # BP Green — buttons, active elements
+backgroundColor          = "#FFFFFF"   # White — main canvas
+secondaryBackgroundColor = "#F7F8F0"   # Warm Grey 1 — sidebar, cards, widgets
+textColor                = "#121000"   # Warm Grey 6 — primary text
+
+linkColor                = "#007F00"
+borderColor              = "#BBBCAA"   # Warm Grey 3
+
+[server]
+headless = true

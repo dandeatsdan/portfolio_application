@@ -1,0 +1,6 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pandas>=2.0
+pydantic>=2.0
+# Install the scenario-modeller package from the sibling Streamlit app:
+#   pip install -e ../07_streamlit_app   (or ../07_software_project before rename)

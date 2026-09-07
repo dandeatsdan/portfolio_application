@@ -1,0 +1,112 @@
+"""
+Pydantic response schemas for the FastAPI backend.
+
+These define the shape of data returned to the React frontend.
+"""
+
+from pydantic import BaseModel
+
+
+class CaseRow(BaseModel):
+    id: int
+    case: str
+    case_name: str
+    group_entity: str
+    segment: str
+    region: str
+    country: str
+    plan_type: str
+
+
+class OperationRow(BaseModel):
+    operation: str
+    category: str
+    description: str
+    input_1_label: str | None
+    input_1_required: str | None
+    input_2_label: str | None
+    input_2_required: str | None
+    input_3_label: str | None
+    input_3_required: str | None
+    input_4_label: str | None
+    input_4_required: str | None
+    input_5_label: str | None
+    input_5_required: str | None
+
+
+class TotalsRow(BaseModel):
+    metric: str
+    case: str
+    total_5y: float | None
+    average_5y: float | None
+    y2026: float | None
+    y2027: float | None
+    y2028: float | None
+    y2029: float | None
+    y2030: float | None
+
+
+class PortfolioKpis(BaseModel):
+    metric: str
+    total_5y: float
+    average_5y: float
+
+
+class StackedPoint(BaseModel):
+    year: int
+    case_name: str
+    value: float
+
+
+class RankedRow(BaseModel):
+    case_name: str
+    total: float
+    cumulative: float | None = None
+
+
+class ScenarioInstruction(BaseModel):
+    id: int
+    case: str
+    include: bool
+    operation: str
+    param1: float = 0.0
+    param2: float = 0.0
+    param3: float = 0.0
+    param4: float = 0.0
+    param5: float = 0.0
+
+
+class ScenarioRunRequest(BaseModel):
+    scenario_id: int = 1
+    scenario_name: str = "Scenario"
+    instructions: list[ScenarioInstruction]
+
+
+class ProfileRow(BaseModel):
+    id: int
+    case: str
+    metric: str
+    year: int
+    value: float
+    operation: str | None = None
+
+
+class ScenarioRunResponse(BaseModel):
+    scenario_name: str
+    output_rows: int
+    errors: list[dict]
+    results: list[ProfileRow]
+    baseline: list[ProfileRow]
+
+
+class WaterfallRequest(BaseModel):
+    baseline: list[ProfileRow]
+    scenario: list[ProfileRow]
+    metric: str
+    years: list[int] | None = None
+
+
+class WaterfallRow(BaseModel):
+    label: str
+    value: float
+    type: str  # "absolute" | "relative"
