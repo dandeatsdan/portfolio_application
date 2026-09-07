@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Query
 from ..state import app_state
+from ..utils.display import to_display
 from scenario_modeller.services.portfolio_service import (
     portfolio_kpis,
     stacked_by_case,
@@ -84,7 +85,7 @@ def get_kpis(
 ):
     metric_list = [m.strip() for m in metrics.split(",") if m.strip()]
     cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
-    profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
+    profs = to_display(_filter_profiles(app_state.profiles, cases, year_from, year_to), app_state.invert_metrics)
 
     result = []
     for m in metric_list:
@@ -108,7 +109,7 @@ def get_stacked(
     case_names:    str = Query(default=""),
 ):
     cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
-    profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
+    profs = to_display(_filter_profiles(app_state.profiles, cases, year_from, year_to), app_state.invert_metrics)
     df = profs[profs["Metric"] == metric].copy()
 
     COL_MAP = {
@@ -153,7 +154,7 @@ def get_ranked(
     case_names:    str = Query(default=""),
 ):
     cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
-    profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
+    profs = to_display(_filter_profiles(app_state.profiles, cases, year_from, year_to), app_state.invert_metrics)
     df = profs[profs["Metric"] == metric].copy()
 
     COL_MAP = {
@@ -222,8 +223,10 @@ def get_creaming(
     npv_per_case = fcf_df.groupby("ID").apply(discounted_sum).reset_index()
     npv_per_case.columns = ["ID", "NPV"]
 
-    # Capex per case
+    # Capex per case — invert sign for display if Cash Capex is in the invert list
     capex_df = profs[profs["Metric"] == CAPEX_METRIC].copy()
+    if CAPEX_METRIC in app_state.invert_metrics:
+        capex_df["Value"] = capex_df["Value"] * -1
     capex_per_case = capex_df.groupby("ID")["Value"].sum().reset_index().rename(columns={"Value": "Capex"})
 
     # Merge dimension label from case_listing

@@ -1,28 +1,29 @@
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { getHealth } from '../api/client'
+import { BarChart2, PencilRuler, TrendingUp } from 'lucide-react'
 
 const CARDS = [
   {
-    to:      '/portfolio',
-    step:    1,
-    label:   'PORTFOLIO VIEWER',
-    title:   'Portfolio Viewer',
-    desc:    'Review portfolio shape, quality and key contributors, then shortlist entities for a scenario.',
+    to:    '/portfolio',
+    step:  1,
+    icon:  BarChart2,
+    title: 'Portfolio Viewer',
+    desc:  'Review portfolio shape, quality and key contributors, then shortlist entities for a scenario.',
   },
   {
-    to:      '/build',
-    step:    2,
-    label:   'BUILD A SCENARIO',
-    title:   'Build a Scenario',
-    desc:    'Create a new scenario or continue editing a saved draft.',
+    to:    '/build',
+    step:  2,
+    icon:  PencilRuler,
+    title: 'Build a Scenario',
+    desc:  'Create a new scenario or continue editing a saved draft.',
   },
   {
-    to:      '/results',
-    step:    3,
-    label:   'SCENARIO RESULTS',
-    title:   'Scenario Results',
-    desc:    'Open saved scenario results and review the portfolio impact.',
+    to:    '/results',
+    step:  3,
+    icon:  TrendingUp,
+    title: 'Scenario Results',
+    desc:  'Open saved scenario results and review the portfolio impact.',
   },
 ]
 
@@ -48,7 +49,7 @@ export default function Home() {
 
       {/* Destination cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
-        {CARDS.map(({ to, step, label, title, desc }) => (
+        {CARDS.map(({ to, step, icon: Icon, title, desc }) => (
           <button
             key={to}
             onClick={() => navigate(to)}
@@ -69,15 +70,17 @@ export default function Home() {
             onMouseEnter={e => {
               e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'
               e.currentTarget.style.borderTopColor = 'var(--color-accent)'
+              const svg = e.currentTarget.querySelector('svg')
+              if (svg) svg.style.color = 'var(--color-accent)'
             }}
             onMouseLeave={e => {
               e.currentTarget.style.boxShadow = 'var(--shadow)'
               e.currentTarget.style.borderTopColor = 'var(--color-accent-dark)'
+              const svg = e.currentTarget.querySelector('svg')
+              if (svg) svg.style.color = 'var(--color-accent-dark)'
             }}
           >
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.1em', color: 'var(--color-accent-dark)' }}>
-              {label}
-            </span>
+            <Icon size={32} style={{ display: 'block', color: 'var(--color-accent-dark)', transition: 'color 0.15s' }} />
             <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text)' }}>
               {title}
             </span>

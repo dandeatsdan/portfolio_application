@@ -11,10 +11,12 @@ Activate the virtual environment (run in each terminal):
 TERMINAL 1 — BACKEND (FastAPI)
 --------------------------------
 cd 08_react_app
-uvicorn backend.main:app --reload
+python -m uvicorn backend.main:app --reload
 
 API will be available at: http://127.0.0.1:8000
 API docs (Swagger) at:    http://127.0.0.1:8000/docs
+
+Crtl + C to terminate the app
 
 
 TERMINAL 2 — FRONTEND (React / Vite)

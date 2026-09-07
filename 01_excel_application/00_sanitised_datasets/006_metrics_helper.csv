@@ -1,0 +1,31 @@
+Metric,Invert
+Capital Employed,No
+Cash Capex,Yes
+Cash Flow from Sale of Operations,No
+DD&A Charge,Yes
+Decommissioning Payments,Yes
+EBITDA,No
+Equity Accounted Gas Production,No
+Equity Accounted NGL Production,No
+Equity Accounted Oil Production,No
+Equity Accounted Total Production (mboed),No
+Gas - Non-Revenue Generating Prod (mmscfd),No
+Gas Production (mmscf/d),No
+Gross Margin,No
+Lease Interest paid,Yes
+Liquids Production (mboed),No
+NGL - Non-Revenue Generating Prod (mbd),No
+NGL Production (mb/d),No
+Oil - Non-Revenue Generating Prod (mbd),No
+Oil Production (mb/d),No
+Operating Cashflow,No
+Pre Tax Cash Flow,No
+Production Costs,Yes
+Related Company Income,No
+Revenue Generating Total Prod (mboe),No
+Revenue Generating Total Prod (mboed),No
+Total Cash Costs,Yes
+Total Dividend Received,No
+Total Production (mboed),No
+Underlying RCOP,No
+Working Capital Changes (SEA),No

@@ -39,13 +39,21 @@ class AppState:
     profiles: pd.DataFrame
     ops_library: pd.DataFrame
     totals_avgs: pd.DataFrame
+    invert_metrics: set
 
     def load(self):
         data_dir = _find_data_dir()
-        self.case_listing = load_case_listing(data_dir / "001_case_listing.csv")
-        self.profiles     = load_profiles(data_dir / "002_profiles.csv")
-        self.ops_library  = load_operations_library(data_dir / "005_operations_library.csv")
-        self.totals_avgs  = load_totals_avgs(data_dir / "004_totals_avgs.csv")
+        self.case_listing    = load_case_listing(data_dir / "001_case_listing.csv")
+        self.profiles        = load_profiles(data_dir / "002_profiles.csv")
+        self.ops_library     = load_operations_library(data_dir / "005_operations_library.csv")
+        self.totals_avgs     = load_totals_avgs(data_dir / "004_totals_avgs.csv")
+        metrics_helper       = pd.read_csv(data_dir / "006_metrics_helper.csv", dtype=str)
+        metrics_helper.columns = metrics_helper.columns.str.strip()
+        metrics_helper["Metric"] = metrics_helper["Metric"].str.strip()
+        metrics_helper["Invert"] = metrics_helper["Invert"].str.strip()
+        self.invert_metrics  = set(
+            metrics_helper.loc[metrics_helper["Invert"] == "Yes", "Metric"]
+        )
 
 
 app_state = AppState()

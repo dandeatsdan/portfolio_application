@@ -171,7 +171,8 @@ function FlexChartPanel({ metrics, defaultMetric, filters }) {
   return (
     <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '0.9rem 1rem', flex: 1, minWidth: 0 }}>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-        <Select value={metric}  onChange={setMetric}  options={metrics} style={{ maxWidth: 180 }} />
+        <Select value={metric}  onChange={setMetric}  options={metrics} style={{ maxWidth: 170 }} />
+        <label style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Break down</label>
         <Select value={groupBy} onChange={setGroupBy} options={DIMENSION_OPTIONS} />
         <ViewToggle value={view} onChange={setView} />
       </div>
