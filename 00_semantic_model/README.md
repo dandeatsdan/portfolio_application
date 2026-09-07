@@ -1,6 +1,6 @@
 # Semantic Model
 
-This folder contains the **working sanitised semantic model, supporting Power Query implementation and representative datasets** developed for the Oil and Gas LTP Scenario Modeller.
+This folder contains the **working sanitised semantic model, supporting Power Query implementation and representative datasets** developed as the governed data layer of the Upstream Portfolio Scenario Modelling Framework.
 
 The semantic model provides the governed data layer supporting the Excel scenario modelling application. It prepares and integrates financial and production profiles, controlled manual inputs, Financial Entity reference data, modelling-case mappings, plan classifications and supporting tax assumptions before exposing purpose-specific datasets to the modeller.
 

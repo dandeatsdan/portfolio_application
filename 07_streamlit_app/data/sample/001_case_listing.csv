@@ -1,0 +1,13 @@
+﻿[Case],[Group Entity],[Segment],[Region],[Country],[Plan Type],[Case Name],[Country Key],[Index],Count
+Project Ironwood |Main Plan,Gas,G&LC,Frontier Region,Eastern Province,Main Plan,Project Ironwood ,90001,1,1
+Project Northstar |Main Plan,Gas,G&LC,Frontier Region,Eastern Province,Main Plan,Project Northstar ,90001,2,1
+Project Silver Peak |Main Plan,Oil,P&O,Falcon Territories,Falcon Region,Main Plan,Project Silver Peak ,90002,3,1
+Project Granite Basin |Main Plan,Gas,G&LC,Falcon Operations,Falcon Block,Main Plan,Project Granite Basin ,90003,4,1
+Project Copper Bay |Main Plan,Oil,P&O,Coastal Republic,Coastal Republic,Main Plan,Project Copper Bay ,90004,5,1
+Project Redcliff |Main Plan,Gas,G&LC,Pacific Region,Southern Coast,Main Plan,Project Redcliff ,90005,6,1
+Project Highland Crest |Main Plan,Gas,G&LC,Meridian Region,Meridian Region,Main Plan,Project Highland Crest ,90006,7,1
+Project Blue Horizon |Main Plan,Oil,P&O,Central Oil Region,Desert Province,Main Plan,Project Blue Horizon ,90007,8,1
+Project Cedar Point |Manual,Oil,P&O,Northern Shelf,Northern Shelf West,Manual,Project Cedar Point ,90008,9,1
+Project Stonehaven |Main Plan,Oil,P&O,Northern Shelf,Northern Shelf West,Main Plan,Project Stonehaven ,90008,10,1
+Project Raven Rock |Main Plan,Gas,G&LC,Island Region,Island Region,Main Plan,Project Raven Rock ,90009,11,1
+Project Eagle Pass |Manual,Oil,P&O,Western Hemisphere,Southern Republic,Manual,Project Eagle Pass ,90010,12,1

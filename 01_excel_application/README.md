@@ -1,6 +1,6 @@
 # Excel Scenario Modelling Application
 
-This folder contains the **working sanitised Oil and Gas LTP Scenario Modeller, supporting implementation code and representative input datasets**.
+This folder contains the **working sanitised Upstream Scenario Modelling Application, supporting implementation code and representative input datasets**.
 
 The Excel application is the principal user-facing implementation of the modelling framework. It enables users to select modelling cases, configure alternative scenarios, apply controlled modelling operations, validate their instructions, execute the Python scenario engine and analyse the resulting financial and production profiles.
 
@@ -17,7 +17,7 @@ The repository version has been deliberately sanitised and decoupled from contro
 | [DAX](02_DAX/) | DAX implementation supporting the semantic-model-to-Excel interfaces and Power Pivot analytical layer. |
 | [Power Query](03_power_query/) | Power Query implementation used to capture Python-generated scenario results and make them available to the Excel analytical model. |
 | [Python](04_python/) | Modular Python-in-Excel implementation covering input preparation, scenario instruction generation, reusable modelling operations, scenario execution and runtime logging. |
-| [Working Excel Application](05_working_solution/scenario_modelling_framework.xlsm) | Working sanitised macro-enabled Excel application configured to use the representative repository datasets rather than live semantic-model connections. |
+| [Working Excel Application](05_working_solution/scenario_modelling_application.xlsm) | Working sanitised macro-enabled Excel application configured to use the representative repository datasets rather than live semantic-model connections. |
 
 ## Sanitised Application Datasets
 
@@ -46,7 +46,11 @@ The VBA implementation provides the application-level controls required to coord
 | [Refresh Scenario Results](01_vba/003_refresh_scenario_results.bas) | Coordinates refresh of the scenario outputs after successful Python execution. |
 | [Page Navigation](01_vba/004_page_navigation.bas) | Provides controlled navigation between the Home page and scenario configuration interfaces. |
 
-The VBA layer acts primarily as an **application orchestration and user-control layer**. Core scenario calculation logic remains within Python rather than being distributed across workbook macros.
+The VBA layer acts primarily as an **application orchestration and user-control layer**. Core scenario calculation logic remains within Python rather than being distributed across workbook macros. 
+
+**Worksheet protection** is also used to preserve the intended application interface and reduce accidental changes to formulas, controls, and shapes. Protection is intentionally applied **without a password** and is an application-integrity safeguard rather than a security control.
+
+Key refresh and execution actions use **double-confirmation prompts** to reduce accidental model runs or output refreshes.
 
 ## DAX and Semantic-Model Interfaces
 

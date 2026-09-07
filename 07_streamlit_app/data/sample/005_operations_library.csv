@@ -1,0 +1,13 @@
+Operation,Category,Description,Input 1 Label,Input 1 Required,Input 2 Label,Input 2 Required,Input 3 Label,Input 3 Required,Input 4 Label,Input 4 Required,Input 5 Label,Input 5 Required
+No Change,Default,Retains profile unchanged,n/a,-,n/a,-,n/a,-,n/a,-,n/a,-
+Delay,Timing,Moves profile later,Yrs to delay (whole number),Yes,Delay penalty ($m),Optional,Penalty year,Optional,n/a,-,n/a,-
+Accelerate,Timing,Moves profile earlier,Yrs to accelerate (whole number),Yes,Funding required ($m),Optional,Funding year,Optional,n/a,-,n/a,-
+Farm In (Increase),Scale,Increases selected profile,Increase % (as fraction),Yes,Effective start year,Optional,Effective end year,Optional,Acquisition payment ($m),Optional,Payment year,Optional
+Farm Down (Dilution),Scale,Reduces selected profile,Dilution % (as fraction),Yes,Effective start year,Optional,Effective end year,Optional,Disposal proceeds,Optional,Proceeds year,Optional
+Truncate Before,Timing,Removes values before year,Retain profile from year,Yes,n/a,-,n/a,-,n/a,-,n/a,-
+Truncate After,Timing,Removes values after year,Retain profile until year,Yes,n/a,-,n/a,-,n/a,-,n/a,-
+Production Change %,Input metric,Adjusts production by a %,% change (as fraction),Yes,Start year,Optional,End year,Optional,n/a,-,n/a,-
+OPEX Change %,Input metric,Adjusts OPEX by a %,% change (as fraction),Yes,Start year,Optional,End year,Optional,n/a,-,n/a,-
+CAPEX Change %,Input metric,Adjusts CAPEX by a %,% change (as fraction),Yes,Start year,Optional,End year,Optional,n/a,-,n/a,-
+CAPEX Change $m,Input metric,Adjusts CAPEX by $m,Change Yr1 (± $m),Yes,Year 1,Yes,Change Yr2 (± $m),Optional,Year 2,Optional,n/a,-
+OPEX Change $m,Input metric,Adjusts OPEX by $m,Change Yr1 (± $m),Yes,Year 1,Yes,Change Yr2 (± $m),Optional,Year 2,Optional,n/a,-

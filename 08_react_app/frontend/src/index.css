@@ -1,0 +1,59 @@
+/* BP Horizon X — global styles */
+
+:root {
+  --color-canvas:        #FFFFFF;
+  --color-surface:       #F7F7F7;
+  --color-surface-2:     #E1E3D6;
+  --color-header-bg:     #003600;
+  --color-nav-bg:        #003600;
+  --color-nav-text:      #FFFFFF;
+  --color-nav-active:    #8EDF00;
+  --color-accent:        #8EDF00;
+  --color-accent-dark:   #007F00;
+  --color-border:        #BBBCAA;
+  --color-border-strong: #007F00;
+  --color-text:          #121000;
+  --color-text-muted:    #828474;
+  --color-text-light:    #BBBCAA;
+  --color-positive:      #8EDF00;
+  --color-negative:      #FF4116;
+  --color-warning:       #FF9A00;
+  --color-info:          #14BFC8;
+
+  --sidebar-width: 260px;
+  --header-height: 56px;
+  --font-family:   'Inter', Arial, sans-serif;
+  --radius:        6px;
+  --shadow:        0 1px 4px rgba(0,0,0,0.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 { margin: 0 0 0.4em; font-weight: 600; }
+p { margin: 0 0 0.75em; }
+a { color: var(--color-accent-dark); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button {
+  font-family: var(--font-family);
+  cursor: pointer;
+}
+
+/* Utility */
+.text-muted  { color: var(--color-text-muted); }
+.text-small  { font-size: 12px; }
+.divider     { border: none; border-top: 1px solid var(--color-border); margin: 1rem 0; }

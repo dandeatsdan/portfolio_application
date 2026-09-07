@@ -156,6 +156,20 @@ Upstream-Portfolio-Scenario-Modelling/
 ├── 05_project_management/
 │   └── project_management_plan.pdf
 │
+├── 06_project_diary_evidence/
+│   ├── E01_project_reengagement_terms_of_reference.svg
+│   ├── E02_business_support_evaluation_request.svg
+│   ├── E03_azure_devops_delivery_control.svg
+│   ├── E04_financial_metric_definition.svg
+│   ├── E05_case_translation_manual_profiles.svg
+│   ├── E06_scenario_configuration_validation.svg
+│   ├── E07_analytical_method_scope.svg
+│   ├── E08_horizon_x_design_review.svg
+│   ├── E09_business_validation_execution.svg
+│   ├── E10_stakeholder_evaluation.svg
+│   ├── E11_repository_sanitisation.svg
+│   └── README.md
+│
 └── README.md
 ```
 
@@ -182,7 +196,7 @@ Detailed technical and sanitisation documentation is provided in the [Semantic M
 
 ### [`01_excel_application`](01_excel_application/)
 
-Contains the **working sanitised Oil and Gas LTP Scenario Modelling application** together with the extracted implementation artefacts supporting its operation.
+Contains the **working sanitised Scenario Modelling application** together with the extracted implementation artefacts supporting its operation.
 
 The folder includes:
 
@@ -263,7 +277,7 @@ The [Application User Guide](04_user_guides/application_user_guide.pdf) covers:
 
 ### [`05_project_management`](05_project_management/)
 
-Contains the principal project-management artefact supporting delivery of the Upstream Scenario Modelling Framework.
+Contains the principal project-management artefact supporting delivery of the Upstream Portfolio Scenario Modelling Framework.
 
 The [Project Management Plan](05_project_management/project_management_plan.pdf) covers:
 
@@ -273,6 +287,19 @@ The [Project Management Plan](05_project_management/project_management_plan.pdf)
 - stakeholder engagement and communication
 - risk, dependencies, and mitigation
 - success criteria, validation, and project closure
+
+---
+
+### [`06_project_diary_evidence`](06_project_diary_evidence/)
+
+Contains high-resolution supporting evidence exhibits referenced in the DT603 Part B project diary.
+
+The folder includes:
+
+- E01–E11 evidence exhibits aligned to the six project-development themes
+- supporting material covering governance, analytical development, validation, collaboration, and responsible publication
+- higher-resolution versions provided to preserve readability where document conversion reduces image clarity
+- a README index mapping each evidence exhibit to its purpose and corresponding file
 
 ---
 
