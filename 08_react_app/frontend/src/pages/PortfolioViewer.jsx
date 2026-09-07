@@ -35,6 +35,7 @@ function planTypeBadge(pt) {
 
 const DIMENSION_OPTIONS = [
   { value: '',             label: 'None (total)'  },
+  { value: 'plan_type',    label: 'Plan Type'     },
   { value: 'group_entity', label: 'Group Entity'  },
   { value: 'region',       label: 'Region'        },
   { value: 'country',      label: 'Country'       },
@@ -44,6 +45,7 @@ const DIMENSION_OPTIONS = [
 const CREAM_DIM_OPTIONS = DIMENSION_OPTIONS.filter(o => o.value !== '')
 
 const RANK_BY_OPTIONS = [
+  { value: 'plan_type',    label: 'Plan Type'    },
   { value: 'group_entity', label: 'Group Entity' },
   { value: 'region',       label: 'Region'       },
   { value: 'country',      label: 'Country'      },

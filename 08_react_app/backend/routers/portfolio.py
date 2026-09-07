@@ -204,6 +204,7 @@ def get_creaming(
         "region":       "Region",
         "country":      "Country",
         "group_entity": "Group Entity",
+        "plan_type":    "Plan Type",
     }
     dim_col = COL_MAP.get(group_by, "Case Name")
 
