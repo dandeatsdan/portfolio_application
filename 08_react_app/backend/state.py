@@ -13,7 +13,10 @@ from scenario_modeller.data.loaders import (
     load_profiles,
     load_operations_library,
     load_totals_avgs,
+    load_tax_rates,
 )
+from scenario_modeller.engine.financials import calculate_post_tax, source_profiles
+from scenario_modeller.services.portfolio_service import add_derived_totals
 
 # Data lives in the sibling Streamlit app's sample directory.
 # Adjust this path if the folder is renamed or moved.
@@ -43,10 +46,13 @@ class AppState:
 
     def load(self):
         data_dir = _find_data_dir()
-        self.case_listing    = load_case_listing(data_dir / "001_case_listing.csv")
-        self.profiles        = load_profiles(data_dir / "002_profiles.csv")
-        self.ops_library     = load_operations_library(data_dir / "005_operations_library.csv")
-        self.totals_avgs     = load_totals_avgs(data_dir / "004_totals_avgs.csv")
+        # Build a complete candidate before replacing an existing valid baseline.
+        cases = load_case_listing(data_dir / "001_case_listing.csv")
+        raw = source_profiles(load_profiles(data_dir / "002_profiles.csv"))
+        tax_rates = load_tax_rates(data_dir / "003_taxrates.csv")
+        enriched, diagnostics = calculate_post_tax(raw, cases, tax_rates)
+        ops = load_operations_library(data_dir / "005_operations_library.csv")
+        totals = add_derived_totals(load_totals_avgs(data_dir / "004_totals_avgs.csv"), enriched)
         metrics_helper       = pd.read_csv(data_dir / "006_metrics_helper.csv", dtype=str)
         metrics_helper.columns = metrics_helper.columns.str.strip()
         metrics_helper["Metric"] = metrics_helper["Metric"].str.strip()
@@ -54,6 +60,13 @@ class AppState:
         self.invert_metrics  = set(
             metrics_helper.loc[metrics_helper["Invert"] == "Yes", "Metric"]
         )
+        self.case_listing = cases
+        self.raw_profiles = raw
+        self.tax_rates = tax_rates
+        self.profiles = enriched
+        self.baseline_diagnostics = diagnostics
+        self.ops_library = ops
+        self.totals_avgs = totals
 
 
 app_state = AppState()

@@ -22,19 +22,20 @@ export const DEFAULT_FILTERS = {
 }
 
 export const SelectionContext      = createContext({ selectedIds: new Set(), setSelectedIds: () => {} })
-export const ScenarioResultContext = createContext({ scenarioResult: null, setScenarioResult: () => {} })
+export const ScenarioResultContext = createContext({ scenarioResult: null, setScenarioResult: () => {}, lastRunError: null, setLastRunError: () => {} })
 export const SidePanelContext      = createContext({ sidePanel: null, setSidePanel: () => {} })
 export const FiltersContext        = createContext({ filters: DEFAULT_FILTERS, setFilters: () => {} })
 
 export default function App() {
   const [selectedIds,    setSelectedIds]    = useState(new Set())
   const [scenarioResult, setScenarioResult] = useState(null)
+  const [lastRunError, setLastRunError] = useState(null)
   const [sidePanel,      setSidePanel]      = useState(null)
   const [filters,        setFilters]        = useState(DEFAULT_FILTERS)
 
   return (
     <SelectionContext.Provider value={{ selectedIds, setSelectedIds }}>
-      <ScenarioResultContext.Provider value={{ scenarioResult, setScenarioResult }}>
+      <ScenarioResultContext.Provider value={{ scenarioResult, setScenarioResult, lastRunError, setLastRunError }}>
         <FiltersContext.Provider value={{ filters, setFilters }}>
           <SidePanelContext.Provider value={{ sidePanel, setSidePanel }}>
             <BrowserRouter>

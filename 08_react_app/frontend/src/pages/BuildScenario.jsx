@@ -18,7 +18,7 @@ export default function BuildScenario() {
   const navigate = useNavigate()
   const { cases, metrics, loading, error } = usePortfolio()
   const { selectedIds } = useContext(SelectionContext)
-  const { setScenarioResult } = useContext(ScenarioResultContext)
+  const { setScenarioResult, setLastRunError } = useContext(ScenarioResultContext)
 
   const scenario = useScenario(cases)
 
@@ -59,11 +59,16 @@ export default function BuildScenario() {
   }
 
   useEffect(() => {
-    if (scenario.result) {
+    if (scenario.result?.valid) {
+      setLastRunError(null)
       setScenarioResult(scenario.result)
       navigate('/results')
     }
   }, [scenario.result]) // eslint-disable-line
+
+  useEffect(() => {
+    if (scenario.runError) setLastRunError(scenario.runError)
+  }, [scenario.runError, setLastRunError])
 
   if (loading) return <p>Loading…</p>
   if (error)   return <p style={{ color: 'var(--color-negative)' }}>Error: {error}</p>
@@ -196,6 +201,12 @@ export default function BuildScenario() {
         <div style={{ padding: '0.75rem', background: '#fef2f2', border: '1px solid var(--color-negative)', borderRadius: 4, color: 'var(--color-negative)', marginBottom: '1rem', fontSize: 13 }}>
           {scenario.runError}
         </div>
+      )}
+      {scenario.runError && <p role="status">The previous successful result, if any, is still available on Scenario Results.</p>}
+      {scenario.diagnostics.length > 0 && (
+        <ul role="alert">{scenario.diagnostics.map((d, i) =>
+          <li key={i}>{d.Case ? `${d.Case}: ` : ''}{d.message ?? d.Message}</li>
+        )}</ul>
       )}
 
       {/* Run button */}

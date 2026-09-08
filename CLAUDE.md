@@ -6,7 +6,7 @@ This file provides persistent project context and working instructions for Claud
 
 Read this file before proposing or making changes.
 
-Last reviewed: 7 September 2026, against repository commit `e26d69cfa89f0032f4694e3aa87e7ec22f5c049e`. Current-state statements below describe that snapshot; inspect the latest affected code before acting.
+Last reviewed: 7 September 2026; updated on `feature/shared-post-tax-calculations`. The original review used `e26d69cfa89f0032f4694e3aa87e7ec22f5c049e`; financial-processing, React publication and test notes below now reflect this feature. Inspect the latest affected code before acting.
 
 This work is a **post-project learning experiment**. The DT603 degree submission is complete and should be treated as a fixed reference implementation and evidence base. The purpose of the software experiment is to learn how the validated Scenario Modelling Framework could be expressed as a more conventional software application, not to rewrite the submitted project or imply that a new production system is being delivered.
 
@@ -56,7 +56,7 @@ Subsequent application development is already present:
 
 All 12 dispatch operations in the committed Excel Python library exist in the shared web library. One targeted synthetic example per operation produced matching dataframes during the gap review. This is limited evidence of operation parity, not full regression, UI, workbook, or business validation.
 
-The complete Excel execution pipeline has **not** been ported. Current gaps include post-tax calculations, the Excel discounting convention, complete preparation/validation diagnostics, fail-safe publication, multiple-scenario orchestration, and result metadata. React also removes parameters and run timestamps from its scenario response.
+The complete Excel execution pipeline has **not** been ported. React now uses shared post-tax processing for baseline and scenario results, fixed-origin post-tax NPV, and a valid-run publication gate. Its response includes all five instruction parameters, scenario metadata and row timestamps. Complete preparation diagnostics, multiple-scenario orchestration and active Streamlit integration remain gaps; see the gap review's feature update.
 
 Do not describe either web application or its entire engine as validated merely because it reuses the original methodology. Preserve the original project artefacts as reference material; do not modify them as a side effect of web-app work.
 
@@ -319,7 +319,7 @@ discounted value = Post-Tax Cash Flow / (1.08 ** period)
 
 2026 is period 1. Downstream DAX sums the annual discounted rows for NPV.
 
-React's current portfolio API instead discounts **pre-tax** cash flow using a selectable rate and `Year - year_from`, where the first selected year is period 0. This is a different calculation basis, not a completed migration of Excel post-tax NPV. Streamlit's cumulative-contribution function is not a discounted-cash-flow calculation.
+React's portfolio and scenario valuation APIs now use `services/valuation_service.py`: post-tax cash flow, a selectable rate (default 8%), and exponent `Year - 2026 + 1`. Year filters select cash flows without resetting the discount origin. Entity NPV, ranking and creaming must use this service. `Post-tax NPV` is a calculated ranking measure, not an annual metric to sum again. The Excel fixed-rate discounted profile row is not emitted. Streamlit's cumulative-contribution function remains unchanged and is not discounted cash flow.
 
 Use the same declared calculation basis for reference and scenario comparisons. Prevent double-counting derived metrics already present in input files.
 
@@ -327,7 +327,7 @@ Use the same declared calculation basis for reference and scenario comparisons. 
 
 Representative tax inputs are modelling examples, not validated country fiscal models. Preserve the separation between reference assumptions and calculation logic. Check rate completeness, 0–1 bounds, unique country/year keys, coverage, and join cardinality.
 
-A tax CSV and a loader exist in the web package, but neither active application currently connects them to scenario financial processing. Do not mark a calculation implemented merely because its input file exists.
+React startup validates tax inputs and enriches a separate raw baseline through `engine/financials.py`. `services/scenario_service.py` applies operations to raw profiles and then calls the same financial calculation. Missing/invalid RCOP rates fail the candidate; unmatched cash-flow rows use zero cash tax with diagnostics, following Excel. The active Streamlit UI has not yet adopted this coordinator. The helper CSV registers all four derived metrics; derived Total/Avg5y values are calculated in memory without rewriting source totals.
 
 ---
 
@@ -469,7 +469,7 @@ Avoid overwhelming users with charts. A good analytical table is often more usef
 
 ## 16. Testing strategy
 
-Current committed tests are in `07_streamlit_app/tests` and focus on loaders, NoChange, and Delay. There is no dedicated React or API test suite in `08_react_app` at this snapshot. The gap review's synthetic probes are reported evidence, not additional committed regression tests.
+Committed tests are in `07_streamlit_app/tests` and `08_react_app/backend/tests`. The feature has 70 passing Python/API tests covering existing operations/loaders plus tax validation, repeat calculation, invalid-run withholding, NoChange reconciliation, fixed-origin valuation and NPV agreement across endpoints. From the repository root, install `08_react_app/backend/requirements-dev.txt`, then run `python -m pytest 07_streamlit_app/tests 08_react_app/backend/tests -q`. Frontend build passes with a bundle-size warning; browser acceptance checks remain outstanding because local preview access was blocked.
 
 From `07_streamlit_app`, after installing `.[dev]`, run:
 
@@ -578,7 +578,7 @@ Messages should preserve useful context such as:
 
 ### Publication contract
 
-Excel marks the run invalid on operation or downstream financial failure and withholds reassignment of its published output. The current shared web engine instead returns successful rows plus errors; both active applications can replace the latest result with that partial output. An error count is not an equivalent publication gate.
+Excel marks the run invalid on operation or downstream financial failure and withholds reassignment of its published output. The low-level shared engine still returns successful rows plus errors, but React now calls `execute_scenario`, which withholds the entire candidate on any error. React keeps the previous successful result and labels it after a failed attempt. Active Streamlit still uses the low-level path and needs equivalent integration. An error count alone is not a publication gate.
 
 When completing this migration, separate candidate diagnostics from a successfully published run, preserve the previous valid result on failure, and provide an explicit validity status to both interfaces. Handle empty/no-output runs deliberately. Retain the web engine's explicit missing-profile errors; the Excel loop silently skips such cases, so parity should not remove that improvement.
 
@@ -637,7 +637,7 @@ When working in this repository:
 
 Use the [gap review](08_react_app/Excel-Python-to-Web-Application-Gap-Review.md) as the detailed evidence base. Do not restart package scaffolding, remigrate NoChange/Delay, or assume the remaining operations are absent.
 
-For a parity-completion task, the recommended order is:
+The list below is the original parity roadmap. Shared post-tax processing, fixed-origin NPV, React publication gating and React instruction metadata are now implemented on this feature; validate them rather than rebuilding them. Active Streamlit adoption and full workbook/user acceptance remain outstanding. For remaining parity work, use this order:
 
 1. **Make execution scope reliable.** Align shortlist/inclusion semantics and visible counts; distinguish candidate results from valid published runs (G04 and the shortlist finding).
 2. **Preserve assumptions through React.** Return a normalised instruction snapshot with all five parameters, scenario metadata, and run context (G07, G09, G10).

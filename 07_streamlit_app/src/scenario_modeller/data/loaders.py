@@ -9,6 +9,7 @@ validated Excel application but has no Excel dependencies.
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from scenario_modeller.data.schemas import (
     CASE_LISTING_REQUIRED,
@@ -180,15 +181,31 @@ def load_tax_rates(path: str | Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     df = _strip_brackets(df)
 
+    return validate_tax_rates(df)
+
+
+def validate_tax_rates(df: pd.DataFrame) -> pd.DataFrame:
+    """Validate CSV or in-memory tax assumptions without changing the input."""
+
     missing = [c for c in TAX_RATES_REQUIRED if c not in df.columns]
     if missing:
         raise ValueError(f"tax_rates: missing required columns: {missing}")
 
     df = df[TAX_RATES_REQUIRED].copy()
 
-    df["Year"] = pd.to_numeric(df["Year"], errors="coerce").astype("Int64")
+    for col in ["Country", "Country Key"]:
+        df[col] = df[col].astype("string").str.strip().replace("", pd.NA)
+    years = pd.to_numeric(df["Year"], errors="coerce")
+    if years.isna().any() or not np.isfinite(years).all() or (years % 1 != 0).any():
+        raise ValueError("tax_rates: Year must contain finite whole years")
+    df["Year"] = years.astype(int)
     df["ETR"] = pd.to_numeric(df["ETR"], errors="coerce")
     df["CTR"] = pd.to_numeric(df["CTR"], errors="coerce")
+
+    if df[["Country Key", "Year", "ETR", "CTR"]].isna().any(axis=None):
+        raise ValueError("tax_rates: incomplete country/year/rate records")
+    if not df["ETR"].between(0, 1).all() or not df["CTR"].between(0, 1).all():
+        raise ValueError("tax_rates: ETR and CTR must be between 0 and 1")
 
     duplicates = df[df.duplicated(subset=["Country Key", "Year"], keep=False)]
     if not duplicates.empty:

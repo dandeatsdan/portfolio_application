@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Cell,
 } from 'recharts'
-import { getWaterfall } from '../api/client'
+import { getWaterfall, getScenarioValuation } from '../api/client'
 import KpiCard from '../components/KpiCard'
 import ChartPanel from '../components/ChartPanel'
 import JourneyStrip from '../components/JourneyStrip'
@@ -25,9 +25,11 @@ function sumMetricYears(rows, metric, years) {
 }
 
 export default function ScenarioResults() {
-  const { scenarioResult } = useContext(ScenarioResultContext)
+  const { scenarioResult, lastRunError } = useContext(ScenarioResultContext)
 
-  const [wfMetric, setWfMetric]   = useState('Pre Tax Cash Flow')
+  const [wfMetric, setWfMetric]   = useState('Post-Tax Cash Flow')
+  const [valuation, setValuation] = useState(null)
+  const [valuationError, setValuationError] = useState(null)
   const [wfData,   setWfData]     = useState([])
   const [yearMin,  setYearMin]    = useState(2026)
   const [yearMax,  setYearMax]    = useState(2040)
@@ -44,6 +46,18 @@ export default function ScenarioResults() {
     }).then(setWfData).catch(() => setWfData([]))
   }, [scenarioResult, wfMetric, yearMin, yearMax]) // eslint-disable-line
 
+  useEffect(() => {
+    if (!scenarioResult) return
+    let active = true
+    setValuation(null)
+    setValuationError(null)
+    getScenarioValuation({ baseline: scenarioResult.baseline, scenario: scenarioResult.results,
+      year_from: yearMin, year_to: yearMax, discount_rate: scenarioResult.valuation?.discount_rate ?? 8,
+    }).then(data => { if (active) setValuation(data) })
+      .catch(err => { if (active) setValuationError(err.message) })
+    return () => { active = false }
+  }, [scenarioResult, yearMin, yearMax])
+
   if (!scenarioResult) {
     return (
       <div>
@@ -56,12 +70,12 @@ export default function ScenarioResults() {
   const { results, baseline, scenario_name, errors } = scenarioResult
 
   // KPI deltas
-  const bProd  = sumMetricYears(baseline, 'Production', years)
-  const sProd  = sumMetricYears(results,  'Production', years)
-  const bFcf   = sumMetricYears(baseline, 'Pre Tax Cash Flow', years)
-  const sFcf   = sumMetricYears(results,  'Pre Tax Cash Flow', years)
-  const bGm    = sumMetricYears(baseline, 'Gross Margin', years)
-  const sGm    = sumMetricYears(results,  'Gross Margin', years)
+  const bProd  = sumMetricYears(baseline, 'Total Production (mboed)', years) * 0.36525
+  const sProd  = sumMetricYears(results,  'Total Production (mboed)', years) * 0.36525
+  const bFcf   = sumMetricYears(baseline, 'Post-Tax Cash Flow', years)
+  const sFcf   = sumMetricYears(results,  'Post-Tax Cash Flow', years)
+  const bGm    = sumMetricYears(baseline, 'Post-Tax RCOP', years)
+  const sGm    = sumMetricYears(results,  'Post-Tax RCOP', years)
 
   // Stacked area data
   function makeStackedData(rows, metric) {
@@ -73,9 +87,9 @@ export default function ScenarioResults() {
     return Object.values(byYear).sort((a, b) => a.year - b.year)
   }
 
-  const caseNames = [...new Set(results.map(r => r.case))]
-  const bStackProd = makeStackedData(baseline, 'Production')
-  const sStackProd = makeStackedData(results,  'Production')
+  const caseNames = [...new Set([...baseline, ...results].map(r => r.case))]
+  const bStackProd = makeStackedData(baseline, 'Total Production (mboed)')
+  const sStackProd = makeStackedData(results,  'Total Production (mboed)')
 
   const allMetrics = [...new Set(results.map(r => r.metric))]
 
@@ -83,8 +97,9 @@ export default function ScenarioResults() {
     <div>
       <JourneyStrip current="results" />
       <h2 style={{ marginBottom: '0.25rem' }}>Scenario Results</h2>
+      {lastRunError && <p role="alert" style={{ color: 'var(--color-negative)' }}>The latest attempt failed. These are the previous successful run's results. {lastRunError}</p>}
       <p className="text-small text-muted" style={{ marginBottom: '1.25rem' }}>
-        Comparing <strong>{scenario_name}</strong> against reference baseline.
+        Comparing <strong>{scenario_name}</strong> against the full reference portfolio. Financial defaults are post-tax.
       </p>
 
       {/* Year range filter */}
@@ -101,11 +116,15 @@ export default function ScenarioResults() {
 
       {/* KPI outcome tiles */}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <KpiCard title="Production — Scenario" value={fmt(sProd)} unit="mboed" delta={sProd - bProd} deltaPct={bProd ? (sProd - bProd) / bProd * 100 : null} help={`Reference: ${fmt(bProd)}`} />
-        <KpiCard title="Pre-Tax FCF — Scenario" value={fmt(sFcf)} unit="$m" delta={sFcf - bFcf} deltaPct={bFcf ? (sFcf - bFcf) / bFcf * 100 : null} help={`Reference: ${fmt(bFcf)}`} />
-        <KpiCard title="Gross Margin — Scenario" value={fmt(sGm)} unit="$m" delta={sGm - bGm} deltaPct={bGm ? (sGm - bGm) / bGm * 100 : null} help={`Reference: ${fmt(bGm)}`} />
-        <KpiCard title="Output rows" value={results.length.toLocaleString()} />
+        <KpiCard title="Cumulative Production — Scenario" value={fmt(sProd)} unit="mmboe" delta={sProd - bProd} deltaPct={bProd ? (sProd - bProd) / bProd * 100 : null} help={`Reference: ${fmt(bProd)}`} />
+        <KpiCard title="Post-Tax FCF — Scenario" value={fmt(sFcf)} unit="$m" delta={sFcf - bFcf} deltaPct={bFcf ? (sFcf - bFcf) / bFcf * 100 : null} help={`Reference: ${fmt(bFcf)}`} />
+        <KpiCard title="Post-Tax RCOP — Scenario" value={fmt(sGm)} unit="$m" delta={sGm - bGm} deltaPct={bGm ? (sGm - bGm) / bGm * 100 : null} help={`Reference: ${fmt(bGm)}`} />
+        <KpiCard title={`Post-Tax NPV @ ${scenarioResult.valuation?.discount_rate ?? 8}%`} value={fmt(valuation?.scenario)} unit="$m" delta={valuation?.delta} help={`Reference: ${fmt(valuation?.baseline)}; fixed 2026 base, period 1.`} />
       </div>
+      {valuationError && <p role="alert">NPV unavailable: {valuationError}</p>}
+      {scenarioResult.diagnostics?.length > 0 && <details><summary>Calculation warnings ({scenarioResult.diagnostics.length})</summary>
+        <ul>{scenarioResult.diagnostics.map((d, i) => <li key={i}>Case {d.ID}, {d.Year}: {d.message ?? d.Message}</li>)}</ul>
+      </details>}
 
       {/* Side-by-side Production charts */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
@@ -174,19 +193,17 @@ export default function ScenarioResults() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
-                {['Case', 'Operation', 'Param1', 'Param2', 'Param3'].map(h => (
+                {['Case', 'Operation', 'Param1', 'Param2', 'Param3', 'Param4', 'Param5'].map(h => (
                   <th key={h} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '2px solid var(--color-border-strong)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {[...new Map(results.map(r => [r.case, r])).values()].map(r => (
-                <tr key={r.case} style={{ borderBottom: '1px solid var(--color-border)' }}>
+              {(scenarioResult.instructions ?? []).map(r => (
+                <tr key={r.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                   <td style={{ padding: '6px 10px', fontWeight: 500 }}>{r.case}</td>
                   <td style={{ padding: '6px 10px' }}>{r.operation}</td>
-                  <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>—</td>
-                  <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>—</td>
-                  <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>—</td>
+                  {[1, 2, 3, 4, 5].map(i => <td key={i} style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{fmt(r[`param${i}`], 4)}</td>)}
                 </tr>
               ))}
             </tbody>

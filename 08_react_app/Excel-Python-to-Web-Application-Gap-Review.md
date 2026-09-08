@@ -4,7 +4,18 @@
 **Reviewed:** 7 September 2026  
 **Source snapshot:** [1a0ffe5760d9e71822c3aeac4451e33a332399c9](https://github.com/dandeatsdan/portfolio_application/tree/1a0ffe5760d9e71822c3aeac4451e33a332399c9)
 
-## Main finding
+## Feature implementation update — shared post-tax calculations
+
+This section supersedes the corresponding React findings in the historical review below; it does not declare all Excel parity gaps closed.
+
+- **G01–G03:** shared tax validation and post-tax calculation now feed React's baseline and scenario paths. A shared valuation service uses post-tax cash flow, default 8%, fixed 2026 base and period-1 discounting. Ranking includes a calculated Post-tax NPV option. The fixed-rate Excel discounted profile row is deliberately not reproduced; the API calculates NPV directly.
+- **G04:** React withholds invalid candidates and retains the previous successful result, with a failed-attempt label. The active Streamlit path remains unchanged.
+- **G07/G09/G10:** React now returns the normalised instruction snapshot (all five parameters), scenario ID/name/description/rationale, row timestamps, valuation assumptions and diagnostics. This does not close the broader preparation/diagnostic gaps or add durable history.
+- **Still deferred:** active Streamlit financial integration, complete Excel preparation parity, multi-scenario orchestration, elapsed-run timing, price operations and production fiscal validation.
+
+Verification: 70 Python/API tests pass; frontend build passes with a bundle-size warning. Tests include explicit expected tax values, missing/duplicate/invalid rates, repeat calculation, NoChange baseline equality, failed-publication protection and NPV reconciliation across rankings, entity summaries and creaming. Zero-capex cases are retained in creaming totals, with undefined PI sorted last. Browser acceptance remains outstanding because the environment blocked the local preview. This is not a full binary-workbook reconciliation.
+
+## Historical main finding
 
 The core operation library has largely been transferred. **All 12 operations in the committed Excel Python dispatch table are present in the shared web engine**, and each produced matching outputs in a targeted synthetic comparison. The substantial gaps are the surrounding financial-calculation, preparation, validation, publication, and traceability stages.
 
