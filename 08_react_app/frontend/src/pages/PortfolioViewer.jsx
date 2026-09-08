@@ -16,6 +16,7 @@ import KpiCard from '../components/KpiCard'
 import FilterRail from '../components/FilterRail'
 import { SelectionContext, SidePanelContext, FiltersContext } from '../App'
 import theme, { bp } from '../theme'
+import { CASE_SUMMARY_COLUMNS, sortCaseSummaryRows } from './caseSummarySort'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -239,7 +240,10 @@ export default function PortfolioViewer() {
   const [creamData,     setCreamData]     = useState([])
   const [creamGroupBy,  setCreamGroupBy]  = useState('case_name')
   const [entityRows,    setEntityRows]    = useState([])
+  const [entityStatus,  setEntityStatus]  = useState('loading')
+  const [entityRetry,   setEntityRetry]   = useState(0)
   const [entitySearch,  setEntitySearch]  = useState('')
+  const [tableSort,     setTableSort]     = useState(null)
   const [chartSelection, setChartSelection] = useState(null)
 
   const DIM_TO_FIELD = {
@@ -281,8 +285,21 @@ export default function PortfolioViewer() {
   }, [filters, creamGroupBy])
 
   useEffect(() => {
-    getEntitySummary(filters, DISCOUNT_RATE).then(setEntityRows).catch(() => setEntityRows([]))
-  }, [filters])
+    let active = true
+    setEntityStatus('loading')
+    setEntityRows([])
+    getEntitySummary(filters, DISCOUNT_RATE)
+      .then(rows => {
+        if (!active) return
+        setEntityRows(rows)
+        setEntityStatus('ready')
+      })
+      .catch(() => {
+        if (active) setEntityStatus('error')
+      })
+    // Ignore older responses when filters change or the page is left.
+    return () => { active = false }
+  }, [filters, entityRetry])
 
   const kpiMap = Object.fromEntries((kpis || []).map(k => [k.metric, k]))
 
@@ -297,6 +314,14 @@ export default function PortfolioViewer() {
   const filteredCases = entityRows.filter(r =>
     !entitySearch || r['Case Name']?.toLowerCase().includes(entitySearch.toLowerCase())
   )
+  const sortedCases = sortCaseSummaryRows(filteredCases, shortlistIds, tableSort)
+
+  const toggleTableSort = (key) => {
+    setTableSort(prev => ({
+      key,
+      direction: prev?.key === key && prev.direction === 'ascending' ? 'descending' : 'ascending',
+    }))
+  }
 
   const maxRankedTotal = rankedData.length ? Math.max(...rankedData.map(r => Math.abs(r.Total))) : 1
 
@@ -456,9 +481,9 @@ export default function PortfolioViewer() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.4rem' }}>
           <div>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Case Summary</span>
-            <span style={{ color: 'var(--color-text-muted)', fontSize: 13, marginLeft: 8 }}>{filteredCases.length} cases</span>
+            {entityStatus === 'ready' && <span style={{ color: 'var(--color-text-muted)', fontSize: 13, marginLeft: 8 }}>{filteredCases.length} cases</span>}
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               value={entitySearch}
               onChange={e => setEntitySearch(e.target.value)}
@@ -466,7 +491,38 @@ export default function PortfolioViewer() {
               style={{ fontSize: 12, padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 4, width: 180, outline: 'none' }}
             />
             <button
+              type="button"
+              onClick={() => setTableSort(null)}
+              disabled={tableSort === null}
+              style={{
+                padding: '0.45rem 1.1rem', background: '#fff',
+                color: tableSort ? 'var(--color-accent-dark)' : 'var(--color-text-muted)',
+                border: '1px solid var(--color-border)', borderRadius: 4,
+                fontSize: 13, fontWeight: 600,
+                cursor: tableSort ? 'pointer' : 'default',
+              }}
+            >
+              Reset sorting
+            </button>
+            <button
+              type="button"
+              onClick={() => setShortlistIds(new Set())}
+              disabled={shortlistIds.size === 0}
+              style={{
+                padding: '0.45rem 1.1rem', background: '#fff',
+                color: shortlistIds.size > 0 ? 'var(--color-accent-dark)' : 'var(--color-text-muted)',
+                border: '1px solid var(--color-border)', borderRadius: 4,
+                fontSize: 13, fontWeight: 600,
+                cursor: shortlistIds.size > 0 ? 'pointer' : 'default',
+              }}
+            >
+              Clear shortlist
+            </button>
+            <button
+              type="button"
               onClick={() => navigate('/build')}
+              disabled={shortlistIds.size === 0}
+              title={shortlistIds.size === 0 ? 'Shortlist at least one case to build a scenario' : undefined}
               style={{
                 padding: '0.45rem 1.1rem',
                 background: shortlistIds.size > 0 ? 'var(--color-accent-dark)' : 'var(--color-border)',
@@ -499,25 +555,49 @@ export default function PortfolioViewer() {
             </colgroup>
             <thead>
               <tr style={{ background: 'var(--color-surface)', borderBottom: '2px solid var(--color-border)' }}>
-                {[
-                  { label: '',                   align: 'center' },
-                  { label: 'Case Name',          align: 'left'   },
-                  { label: 'Plan Type',          align: 'left'   },
-                  { label: 'Group Entity',       align: 'left'   },
-                  { label: 'Segment',            align: 'left'   },
-                  { label: 'Region',             align: 'left'   },
-                  { label: 'Country',            align: 'left'   },
-                  { label: 'Production (mmboe)', align: 'right'  },
-                  { label: 'Capex ($m)',         align: 'right'  },
-                  { label: 'Post-Tax FCF ($m)',           align: 'right'  },
-                  { label: 'Post-Tax NPV ($m)',           align: 'right'  },
-                ].map(({ label, align }) => (
-                  <th key={label} style={{ padding: '7px 8px', textAlign: align, fontWeight: 600, color: 'var(--color-text-muted)', fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</th>
-                ))}
+                <th scope="col" aria-label="Shortlist" />
+                {CASE_SUMMARY_COLUMNS.map(({ key, label, numeric }) => {
+                  const direction = tableSort?.key === key ? tableSort.direction : undefined
+                  const nextDirection = direction === 'ascending' ? 'descending' : 'ascending'
+                  return (
+                    <th key={key} scope="col" aria-sort={direction} style={{ padding: '7px 8px', textAlign: numeric ? 'right' : 'left', fontWeight: 600, color: 'var(--color-text-muted)', fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleTableSort(key)}
+                        aria-label={`${label}: sort ${nextDirection}`}
+                        title={`${label}: sort ${nextDirection}`}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: numeric ? 'flex-end' : 'flex-start', gap: 3, width: '100%', padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit', textAlign: 'inherit' }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                        <span aria-hidden="true" style={{ flexShrink: 0, fontSize: 9 }}>{direction === 'ascending' ? '▲' : direction === 'descending' ? '▼' : '↕'}</span>
+                      </button>
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
-              {filteredCases.map(row => {
+              {(entityStatus !== 'ready' || sortedCases.length === 0) && (
+                <tr>
+                  <td colSpan={CASE_SUMMARY_COLUMNS.length + 1} style={{ padding: '1rem 8px', textAlign: 'center', color: entityStatus === 'error' ? 'var(--color-negative)' : 'var(--color-text-muted)' }}>
+                    <span role={entityStatus === 'error' ? 'alert' : 'status'}>
+                      {entityStatus === 'loading' ? 'Loading case summary…'
+                        : entityStatus === 'error' ? 'Unable to load the case summary. Please try again.'
+                        : 'No cases match your search or filters.'}
+                    </span>
+                    {entityStatus === 'error' && (
+                      <button
+                        type="button"
+                        onClick={() => setEntityRetry(prev => prev + 1)}
+                        style={{ marginLeft: 8, padding: '3px 8px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-accent-dark)', fontSize: 12 }}
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )}
+              {sortedCases.map(row => {
                 const isShortlisted = shortlistIds.has(row.ID)
                 const isHighlighted = isChartHighlighted(row)
                 const badge = planTypeBadge(row['Plan Type'])
@@ -533,7 +613,14 @@ export default function PortfolioViewer() {
                     }}
                   >
                     <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                      <input type="checkbox" checked={isShortlisted} readOnly style={{ accentColor: 'var(--color-accent-dark)', cursor: 'pointer' }} />
+                      <input
+                        type="checkbox"
+                        checked={isShortlisted}
+                        aria-label={`Shortlist ${row['Case Name']}`}
+                        onClick={e => e.stopPropagation()}
+                        onChange={() => toggleShortlist(row.ID)}
+                        style={{ accentColor: 'var(--color-accent-dark)', cursor: 'pointer' }}
+                      />
                     </td>
                     <td style={{ padding: '6px 8px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Case Name']}</td>
                     <td style={{ padding: '6px 8px' }}>
