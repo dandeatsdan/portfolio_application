@@ -239,6 +239,26 @@ export default function PortfolioViewer() {
   const [creamGroupBy,  setCreamGroupBy]  = useState('case_name')
   const [entityRows,    setEntityRows]    = useState([])
   const [entitySearch,  setEntitySearch]  = useState('')
+  const [chartSelection, setChartSelection] = useState(null)
+
+  const DIM_TO_FIELD = {
+    group_entity: 'Group Entity',
+    region:       'Region',
+    country:      'Country',
+    case_name:    'Case Name',
+    plan_type:    'Plan Type',
+  }
+
+  const selectChart = (dimension, value) =>
+    setChartSelection(prev =>
+      prev?.dimension === dimension && prev?.value === value ? null : { dimension, value }
+    )
+
+  const isChartHighlighted = (row) => {
+    if (!chartSelection) return false
+    const field = DIM_TO_FIELD[chartSelection.dimension]
+    return field ? row[field] === chartSelection.value : false
+  }
 
   // Register FilterRail
   useEffect(() => {
@@ -336,7 +356,7 @@ export default function PortfolioViewer() {
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>
               Ranked Contributors
             </span>
-            <Select value={rankBy}     onChange={setRankBy}     options={RANK_BY_OPTIONS} />
+            <Select value={rankBy}     onChange={v => { setRankBy(v); setChartSelection(null) }}     options={RANK_BY_OPTIONS} />
             <Select value={rankMetric} onChange={setRankMetric} options={metrics} style={{ maxWidth: 160 }} />
             <Select value={topN}       onChange={setTopN}       options={TOP_N_OPTIONS} />
           </div>
@@ -344,13 +364,18 @@ export default function PortfolioViewer() {
           <div style={{ overflowY: 'auto', maxHeight: 420 }}>
             {rankedData.map(row => {
               const pct = Math.abs(row.Total) / maxRankedTotal * 100
+              const isActive = chartSelection?.dimension === rankBy && chartSelection?.value === row.Label
               return (
-                <div key={row.Label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                  <div style={{ width: 140, flexShrink: 0, fontSize: 11, color: '#494733', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div
+                  key={row.Label}
+                  onClick={() => selectChart(rankBy, row.Label)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, cursor: 'pointer', borderLeft: isActive ? '3px solid var(--color-accent)' : '3px solid transparent', paddingLeft: isActive ? 4 : 4 }}
+                >
+                  <div style={{ width: 140, flexShrink: 0, fontSize: 11, color: '#494733', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: isActive ? 700 : 400 }}>
                     {row.Label}
                   </div>
                   <div style={{ flex: 1, background: '#f0f0f0', borderRadius: 3, height: 18, minWidth: 0 }}>
-                    <div style={{ width: `${pct}%`, background: BP_GREEN, height: '100%', borderRadius: 3, transition: 'width 0.3s' }} />
+                    <div style={{ width: `${pct}%`, background: isActive ? 'var(--color-accent)' : BP_GREEN, height: '100%', borderRadius: 3, transition: 'width 0.3s' }} />
                   </div>
                   <div style={{ width: 120, flexShrink: 0, fontSize: 10, color: '#494733', whiteSpace: 'nowrap' }}>
                     {Number(row.Total).toLocaleString(undefined, { maximumFractionDigits: 0 })} ({row.Pct}%)
@@ -367,7 +392,7 @@ export default function PortfolioViewer() {
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Creaming Curve
             </span>
-            <Select value={creamGroupBy} onChange={setCreamGroupBy} options={CREAM_DIM_OPTIONS} />
+            <Select value={creamGroupBy} onChange={v => { setCreamGroupBy(v); setChartSelection(null) }} options={CREAM_DIM_OPTIONS} />
             <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Discount rate: {DISCOUNT_RATE}%</span>
           </div>
           <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 0.5rem' }}>
@@ -406,7 +431,16 @@ export default function PortfolioViewer() {
                     )
                   }}
                 />
-                <Scatter data={creamData} fill={BP_GREEN} />
+                <Scatter
+                  data={creamData.map(d => ({
+                    ...d,
+                    fill: chartSelection?.dimension === creamGroupBy && chartSelection?.value === d.Label
+                      ? 'var(--color-accent)'
+                      : BP_GREEN,
+                  }))}
+                  onClick={(point) => selectChart(creamGroupBy, point.Label)}
+                  style={{ cursor: 'pointer' }}
+                />
               </ScatterChart>
             </ResponsiveContainer>
           ) : (
@@ -483,6 +517,7 @@ export default function PortfolioViewer() {
             <tbody>
               {filteredCases.map(row => {
                 const isShortlisted = shortlistIds.has(row.ID)
+                const isHighlighted = isChartHighlighted(row)
                 const badge = planTypeBadge(row['Plan Type'])
                 return (
                   <tr
@@ -491,8 +526,8 @@ export default function PortfolioViewer() {
                     style={{
                       cursor: 'pointer',
                       borderBottom: '1px solid var(--color-border)',
-                      background: isShortlisted ? 'rgba(0,127,0,0.05)' : 'transparent',
-                      borderLeft: isShortlisted ? '3px solid var(--color-accent-dark)' : '3px solid transparent',
+                      background: isShortlisted ? 'rgba(0,127,0,0.05)' : isHighlighted ? 'rgba(0,100,200,0.06)' : 'transparent',
+                      borderLeft: isShortlisted ? '3px solid var(--color-accent-dark)' : isHighlighted ? '3px solid var(--color-accent)' : '3px solid transparent',
                     }}
                   >
                     <td style={{ padding: '6px 8px', textAlign: 'center' }}>
