@@ -70,7 +70,11 @@ All loaded cases are included using their **reference profiles** by default. The
 
 The **Operations guide** button beside the shortlist opens a help panel with the four operation categories, expandable descriptions, required/optional inputs and examples. It supports keyboard navigation, Escape and a close button, and restores focus on dismissal. Opening help does not change scenario configuration. The dedicated operations PDF opens separately from its first page.
 
-Guide text is maintained in `frontend/src/components/operationGuideContent.js`, with input contracts checked against the sample operations CSV and selectable frontend operations. Examples follow the shared engine's fraction inputs and negative cash-outflow values. The operations PDF remains unchanged; its page 5 transaction summary differs from both the Excel and shared Python implementation for farm-in payments, which affect Cash Capex rather than sale proceeds. The current table still exposes three parameter inputs; the guide documents all five where applicable ahead of the planned case configuration panel.
+Guide text is maintained in `frontend/src/components/operationGuideContent.js`, with input contracts checked against the sample operations CSV and selectable frontend operations. Examples follow the shared engine's fraction inputs and negative cash-outflow values. The operations PDF remains unchanged; its page 5 transaction summary differs from both the Excel and shared Python implementation for farm-in payments, which affect Cash Capex rather than sale proceeds. The case configuration panel exposes all relevant inputs together, including all five for scale operations. Percentage inputs retain the library’s fractional convention (0.10 means 10%).
+
+Each shortlisted row has a **Configure** button and a compact summary. The right-hand panel retains the selected case’s name, ID, plan type, region and country, while highlighting its row. Inclusion is the first decision, followed by one operation and its labelled inputs. Edits remain a draft until **Apply changes**; Cancel, Escape, the close button and backdrop dismissal discard the draft. Switching operations clears the previous draft inputs. Applying exclusion preserves the last applied operation settings, and re-inclusion makes them editable again. **Reset** restores the draft to an included reference profile with all parameters cleared; Apply saves the reset and Cancel preserves the previously saved configuration. Reset keeps the case shortlisted.
+
+The editor checks required values, finite numbers, whole-year inputs, fraction limits, paired amounts/years and explicit year ordering before applying. The existing engine remains responsible for profile-specific calculation validation when running the scenario. This panel does not calculate a live impact preview or change backend calculations.
 
 ## Code and data
 
@@ -121,7 +125,7 @@ npm run build
 Check Operations guide coverage and input metadata with:
 
 ```bash
-node --test src/components/operationGuideContent.test.js
+node --test src/components/operationGuideContent.test.js src/components/caseConfiguration.test.js
 ```
 
 Verification on this feature: 70 Python/API tests passed and the frontend production build passed. Tests cover tax signs/rates/joins, repeat calculation, invalid-run withholding, baseline preservation, NoChange reconciliation, fixed-origin discounting and cross-endpoint NPV agreement. The build reports a large-bundle warning. Browser verification was blocked by the preview environment; manually check metric selectors, NPV ranking, year filters, scenario results and previous-result preservation after a failed run before merging. These checks do not establish full workbook parity or validate business tax assumptions.

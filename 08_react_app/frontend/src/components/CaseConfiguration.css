@@ -1,0 +1,24 @@
+.case-configuration__form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.case-configuration .case-configuration__location { margin-top: 6px; }
+.case-configuration fieldset { margin: 0 0 20px; padding: 0; border: 0; min-width: 0; }
+.case-configuration__inclusion legend { margin-bottom: 12px; font-size: 15px; font-weight: 600; }
+.case-configuration__inclusion label { display: inline-flex; align-items: center; gap: 6px; margin-right: 24px; }
+.case-configuration input { accent-color: var(--color-accent-dark); }
+.case-configuration__operation > label { display: block; margin-bottom: 6px; font-weight: 600; }
+.case-configuration select, .case-configuration__input input { width: 100%; padding: 8px; border: 1px solid var(--color-border); border-radius: 4px; background: white; font: inherit; color: var(--color-text); }
+.case-configuration__operation > p { margin: 10px 0 20px; }
+.case-configuration__input { margin-top: 16px; }
+.case-configuration__input label { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.case-configuration__input label span { color: var(--color-text-muted); font-size: 12px; }
+.case-configuration :disabled { background: var(--color-surface); color: var(--color-text-muted); cursor: not-allowed; }
+.case-configuration input[aria-invalid="true"] { border-color: #b42318; }
+.case-configuration__error { color: #b42318; margin: 6px 0 0; font-size: 12px; }
+.case-configuration__notice, .case-configuration__help { padding: 12px; background: var(--color-surface); border-left: 2px solid var(--color-accent); }
+.case-configuration__help { font-size: 12px; }
+.case-configuration__help summary { cursor: pointer; color: var(--color-accent-dark); }
+.case-configuration__help details p { margin-top: 10px; }
+.case-configuration__footer > div { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; margin-top: 12px; }
+.case-configuration__reset { margin-right: auto; }
+.case-configuration__footer button { padding: 8px 14px; border: 1px solid var(--color-border); border-radius: 4px; background: white; color: var(--color-accent-dark); }
+.case-configuration__footer button[type="submit"] { background: var(--color-accent-dark); border-color: var(--color-accent-dark); color: white; }
+.case-configuration :is(input, select):focus-visible { outline: 2px solid var(--color-accent-dark); outline-offset: 2px; }

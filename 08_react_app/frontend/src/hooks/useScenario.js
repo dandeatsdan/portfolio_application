@@ -42,6 +42,10 @@ export function useScenario(cases, shortlistIds) {
     setCaseConfig(prev => ({ ...prev, [id]: defaultCase() }))
   }, [])
 
+  const applyCaseConfig = useCallback((id, config) => {
+    setCaseConfig(prev => ({ ...prev, [id]: { ...config, params: [...config.params] } }))
+  }, [])
+
   const setParam = useCallback((id, index, value) => {
     setCaseConfig(prev => {
       const cs = prev[id] ?? defaultCase()
@@ -76,7 +80,7 @@ export function useScenario(cases, shortlistIds) {
     name, setName,
     description, setDescription,
     rationale, setRationale,
-    caseConfig, initCases, setCaseField, setParam, resetCase,
+    caseConfig, initCases, setCaseField, setParam, resetCase, applyCaseConfig,
     includedCount, modifiedCount,
     running, run,
     result, runError, diagnostics,

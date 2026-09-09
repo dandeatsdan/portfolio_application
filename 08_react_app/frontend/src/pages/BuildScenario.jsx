@@ -2,11 +2,13 @@ import { useState, useEffect, useContext } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CircleHelp, Pencil } from 'lucide-react'
 import { usePortfolio } from '../hooks/usePortfolio'
-import { useScenario, OPERATION_LABELS } from '../hooks/useScenario'
+import { useScenario } from '../hooks/useScenario'
 import { getTotals } from '../api/client'
 import { SelectionContext, ScenarioResultContext } from '../App'
 import { SCENARIO_CASE_COLUMNS, SHORTLIST_CASE_COLUMNS, sortScenarioCases } from './scenarioCaseSort'
 import OperationsGuide from '../components/OperationsGuide'
+import CaseConfiguration from '../components/CaseConfiguration'
+import { configurationSummary } from '../components/caseConfiguration'
 
 const YEAR_OPTIONS = ['Total 5Y', 'Average 5Y', '2026', '2027', '2028', '2029', '2030']
 const YEAR_COL_MAP = { 'Total 5Y': 'total_5y', 'Average 5Y': 'average_5y', '2026': 'y2026', '2027': 'y2027', '2028': 'y2028', '2029': 'y2029', '2030': 'y2030' }
@@ -51,9 +53,11 @@ export default function BuildScenario() {
   const [availableSort, setAvailableSort] = useState(null)
   const [shortlistSort, setShortlistSort] = useState(null)
   const [operationsGuideOpen, setOperationsGuideOpen] = useState(false)
+  const [editingCaseId, setEditingCaseId] = useState(null)
 
   // Shortlist membership is separate from whether a shortlisted case is included in a run.
   const workingCases = cases.filter(c => selectedIds.has(c.id))
+  const editingCase = workingCases.find(c => c.id === editingCaseId)
   const availableCases = cases.filter(c => !selectedIds.has(c.id))
   const visibleAvailableCases = availableCases.filter(c =>
     (c.case_name ?? '').toLowerCase().includes(availableSearch.trim().toLowerCase())
@@ -144,11 +148,10 @@ export default function BuildScenario() {
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
         <div style={{ flex: '1 1 320px' }}>
-          <h2 style={{ marginBottom: '0.25rem' }}>Build a Scenario</h2>
-          <p className="text-small text-muted" style={{ margin: 0 }}>
-            All cases are included using their reference profiles by default. Shortlist cases to review them or choose whether to include or exclude them.
-            Included shortlisted cases can also be adjusted using operations such as delay or farm-down.
-            Removing a case from the shortlist restores its reference profile and automatically includes it in the scenario.
+          <h2 style={{ marginBottom: '0.15rem' }}>Build a Scenario</h2>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: 13, margin: 0 }}>
+            Shortlist cases to adjust assumptions or exclude them, then run a scenario to assess the portfolio impact.
+            All cases start included using their reference profiles; removing a case from the shortlist restores this default.
           </p>
         </div>
         <button
@@ -254,7 +257,7 @@ export default function BuildScenario() {
               {SHORTLIST_CASE_COLUMNS.map(column => (
                 <SortableCaseHeader key={column.key} column={column} sort={shortlistSort} onSort={toggleShortlistSort} />
               ))}
-              {['In scenario', 'Operation', 'Input 1', 'Input 2', 'Input 3', 'Shortlist'].map(h => (
+              {['Scenario configuration', 'Configure', 'Shortlist'].map(h => (
                 <th key={h} scope="col" style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{h}</th>
               ))}
             </tr>
@@ -262,7 +265,7 @@ export default function BuildScenario() {
           <tbody>
             {workingCases.length === 0 && (
               <tr>
-                <td colSpan={11} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                <td colSpan={8} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
                   <span role="status">No cases shortlisted. All cases will use their reference profiles. Expand Available cases below to shortlist cases for adjustment, exclusion, or review.</span>
                 </td>
               </tr>
@@ -270,41 +273,22 @@ export default function BuildScenario() {
             {sortedShortlistedCases.map(c => {
               const cs = ops[c.id] ?? { include: true, operation: 'No Change', params: [0,0,0,0,0] }
               return (
-                <tr key={c.id} style={{ borderBottom: '1px solid var(--color-border)', background: cs.include ? 'transparent' : 'var(--color-surface)' }}>
+                <tr key={c.id} style={{ borderBottom: '1px solid var(--color-border)', background: c.id === editingCaseId ? '#edf5e8' : cs.include ? 'transparent' : 'var(--color-surface)', boxShadow: c.id === editingCaseId ? 'inset 3px 0 var(--color-accent-dark)' : undefined }}>
                   <td style={{ padding: '7px 10px', textAlign: 'right', color: 'var(--color-text-muted)' }}>{c.id}</td>
                   <td style={{ padding: '7px 10px', fontWeight: 500, whiteSpace: 'nowrap' }}>{c.case_name}</td>
                   <td style={{ padding: '7px 10px' }}>{c.region}</td>
                   <td style={{ padding: '7px 10px' }}>{c.plan_type}</td>
                   <td style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(c.reference)}</td>
                   <td style={{ padding: '7px 10px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontSize: 12 }}>
-                      <input type="checkbox" checked={cs.include}
-                        aria-label={`Include ${c.case_name} in scenario`}
-                        onChange={e => scenario.setCaseField(c.id, 'include', e.target.checked)}
-                        style={{ accentColor: 'var(--color-accent-dark)' }}
-                      />
-                      {cs.include ? 'Included' : 'Excluded'}
-                    </label>
+                    {configurationSummary(cs)}
                   </td>
-                  <td style={{ padding: '7px 6px' }}>
-                    <select value={cs.operation}
-                      onChange={e => scenario.setCaseField(c.id, 'operation', e.target.value)}
-                      disabled={!cs.include}
-                      style={{ fontSize: 12, padding: '3px 5px', border: '1px solid var(--color-border)', borderRadius: 4, width: 170 }}
-                    >
-                      {OPERATION_LABELS.map(op => <option key={op}>{op}</option>)}
-                    </select>
+                  <td style={{ padding: '7px 10px' }}>
+                    <button type="button" aria-label={`Configure ${c.case_name}`} aria-haspopup="dialog"
+                      onClick={() => setEditingCaseId(c.id)} disabled={scenario.running}
+                      style={{ padding: '4px 8px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-accent-dark)', fontSize: 12 }}>
+                      Configure
+                    </button>
                   </td>
-                  {[0, 1, 2].map(idx => (
-                    <td key={idx} style={{ padding: '7px 4px' }}>
-                      <input type="number" step="any"
-                        value={cs.params[idx] ?? 0}
-                        onChange={e => scenario.setParam(c.id, idx, parseFloat(e.target.value) || 0)}
-                        disabled={!cs.include || cs.operation === 'No Change'}
-                        style={{ width: 72, padding: '3px 5px', border: '1px solid var(--color-border)', borderRadius: 4, fontSize: 12, textAlign: 'right' }}
-                      />
-                    </td>
-                  ))}
                   <td style={{ padding: '7px 10px' }}>
                     <button
                       type="button"
@@ -417,6 +401,9 @@ export default function BuildScenario() {
         />
       </label>
 
+      {editingCase && <CaseConfiguration key={editingCase.id} caseRow={editingCase} config={ops[editingCase.id]}
+        onCancel={() => setEditingCaseId(null)}
+        onApply={config => { scenario.applyCaseConfig(editingCase.id, config); setEditingCaseId(null) }} />}
       <OperationsGuide open={operationsGuideOpen} onClose={() => setOperationsGuideOpen(false)} />
     </div>
   )
