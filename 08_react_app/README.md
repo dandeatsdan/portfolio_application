@@ -13,6 +13,7 @@ This is subsequent development building on the original DT603 framework. Origina
 - Python 3.10 or later, preferably in an activated virtual environment.
 - Node.js and npm compatible with the Vite version in `frontend/package.json`.
 - Both `07_streamlit_app` and `08_react_app` retained in their existing sibling locations.
+- `04_user_guides/operations_user_guide.pdf` retained at the repository root's guide location; the frontend bundles it for the Operations guide link.
 
 The Streamlit server does not need to run. Its directory supplies the shared Python package and sample data.
 
@@ -65,6 +66,16 @@ Use the [health endpoint](http://localhost:8000/api/health) to check that the AP
 
 Filters, shortlisted case IDs, and the latest scenario result are managed through React context. They are in-memory application state, not a saved scenario database.
 
+All loaded cases are included using their **reference profiles** by default. The shortlist identifies cases to modify, explicitly exclude, or keep handy for review. Cases in **Available cases** remain included using their reference profiles. Removing a case from the shortlist restores its reference profile and includes it in the scenario; internally, this resets inclusion to yes, operation to No Change, and all five parameters to zero. Run instructions cover all loaded cases, using overrides only for shortlisted cases; an empty shortlist runs the full unchanged portfolio. Running with every case explicitly excluded is disabled. This contract applies to React; active Streamlit behaviour is unchanged by this correction.
+
+The **Operations guide** button beside the shortlist opens a help panel with the four operation categories, expandable descriptions, required/optional inputs and examples. It supports keyboard navigation, Escape and a close button, and restores focus on dismissal. Opening help does not change scenario configuration. The dedicated operations PDF opens separately from its first page.
+
+Guide text is maintained in `frontend/src/components/operationGuideContent.js`, with input contracts checked against the sample operations CSV and selectable frontend operations. Examples follow the shared engine's fraction inputs and negative cash-outflow values. The operations PDF remains unchanged; its page 5 transaction summary differs from both the Excel and shared Python implementation for farm-in payments, which affect Cash Capex rather than sale proceeds. The case configuration panel exposes all relevant inputs together, including all five for scale operations. Percentage inputs retain the library’s fractional convention (0.10 means 10%).
+
+Each shortlisted row has a **Configure** button and a compact summary. The right-hand panel retains the selected case’s name, ID, plan type, region and country, while highlighting its row. Inclusion is the first decision, followed by one operation and its labelled inputs. Edits remain a draft until **Apply changes**; Cancel, Escape, the close button and backdrop dismissal discard the draft. Switching operations clears the previous draft inputs. Applying exclusion preserves the last applied operation settings, and re-inclusion makes them editable again. **Reset** restores the draft to an included reference profile with all parameters cleared; Apply saves the reset and Cancel preserves the previously saved configuration. Reset keeps the case shortlisted.
+
+The editor checks required values, finite numbers, whole-year inputs, fraction limits, paired amounts/years and explicit year ordering before applying. The existing engine remains responsible for profile-specific calculation validation when running the scenario. This panel does not calculate a live impact preview or change backend calculations.
+
 ## Code and data
 
 | Path | Responsibility |
@@ -93,7 +104,7 @@ The React API calculates the baseline's post-tax metrics at startup, before any 
 
 Tax uses non-negative RCOP with ETR for charges and CTR for cash payments. Tax outputs have negative analytical signs; display inversion is metadata-driven. Missing/invalid RCOP tax rates block publication. As in the Excel source, cash-flow rows without matching RCOP use zero cash tax with diagnostics. Representative tax rates are examples, not production fiscal assumptions.
 
-The scenario reference includes all loaded cases, so differences may reflect both operations and omitted cases. Invalid runs return diagnostics without partial results; React retains the previous successful result and labels it after a failed attempt. State remains in memory. There is still no price operation, and the active Streamlit UI is not wired to the new financial coordinator in this change.
+The scenario reference includes all loaded cases, so differences may reflect both operations and explicitly excluded cases. Invalid runs return diagnostics without partial results; React retains the previous successful result and labels it after a failed attempt. State remains in memory. There is still no price operation, and the active Streamlit UI is not wired to the new financial coordinator in this change.
 
 ## Verification and deployment status
 
@@ -109,6 +120,12 @@ From `08_react_app/frontend`, check the frontend build with:
 
 ```bash
 npm run build
+```
+
+Check Operations guide coverage and input metadata with:
+
+```bash
+node --test src/components/operationGuideContent.test.js src/components/caseConfiguration.test.js
 ```
 
 Verification on this feature: 70 Python/API tests passed and the frontend production build passed. Tests cover tax signs/rates/joins, repeat calculation, invalid-run withholding, baseline preservation, NoChange reconciliation, fixed-origin discounting and cross-endpoint NPV agreement. The build reports a large-bundle warning. Browser verification was blocked by the preview environment; manually check metric selectors, NPV ranking, year filters, scenario results and previous-result preservation after a failed run before merging. These checks do not establish full workbook parity or validate business tax assumptions.

@@ -521,13 +521,11 @@ export default function PortfolioViewer() {
             <button
               type="button"
               onClick={() => navigate('/build')}
-              disabled={shortlistIds.size === 0}
-              title={shortlistIds.size === 0 ? 'Shortlist at least one case to build a scenario' : undefined}
               style={{
                 padding: '0.45rem 1.1rem',
-                background: shortlistIds.size > 0 ? 'var(--color-accent-dark)' : 'var(--color-border)',
+                background: 'var(--color-accent-dark)',
                 color: '#fff', border: 'none', borderRadius: 4,
-                fontSize: 13, fontWeight: 600, cursor: shortlistIds.size > 0 ? 'pointer' : 'default',
+                fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}
             >
               Build a Scenario ({shortlistIds.size} shortlisted) →
@@ -535,7 +533,7 @@ export default function PortfolioViewer() {
           </div>
         </div>
         <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
-          Select cases for the scenario builder. Scenario results compare included cases against the full reference portfolio.
+          All cases are included using their reference profiles by default. Shortlist cases to adjust assumptions, exclude them, or keep them handy for review in the scenario builder.
         </p>
 
         <div style={{ overflowX: 'auto' }}>
