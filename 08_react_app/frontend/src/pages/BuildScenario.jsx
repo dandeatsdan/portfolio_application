@@ -3,15 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { CircleHelp, Pencil } from 'lucide-react'
 import { usePortfolio } from '../hooks/usePortfolio'
 import { useScenario } from '../hooks/useScenario'
-import { getTotals } from '../api/client'
+import Select from '../components/Select'
+import { useReferenceMeasures } from '../hooks/useReferenceMeasures'
+import { DEFAULT_REFERENCES, REFERENCE_KEYS, REFERENCE_PERIODS, NPV_METRIC, referenceLabel, updateReference } from './referenceMeasures'
 import { SelectionContext, ScenarioResultContext } from '../App'
-import { SCENARIO_CASE_COLUMNS, SHORTLIST_CASE_COLUMNS, sortScenarioCases } from './scenarioCaseSort'
+import { SCENARIO_CASE_COLUMNS, sortScenarioCases } from './scenarioCaseSort'
 import OperationsGuide from '../components/OperationsGuide'
 import CaseConfiguration from '../components/CaseConfiguration'
 import { configurationSummary } from '../components/caseConfiguration'
-
-const YEAR_OPTIONS = ['Total 5Y', 'Average 5Y', '2026', '2027', '2028', '2029', '2030']
-const YEAR_COL_MAP = { 'Total 5Y': 'total_5y', 'Average 5Y': 'average_5y', '2026': 'y2026', '2027': 'y2027', '2028': 'y2028', '2029': 'y2029', '2030': 'y2030' }
 
 function fmt(v) {
   if (v == null) return '—'
@@ -30,7 +29,7 @@ function SortableCaseHeader({ column: { key, label, numeric }, sort, onSort }) {
         title={`${label}: sort ${nextDirection}`}
         style={{ display: 'flex', alignItems: 'center', justifyContent: numeric ? 'flex-end' : 'flex-start', gap: 3, width: '100%', padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit' }}
       >
-        {label}
+        <span>{label.split(' · ')[0]}{label.includes(' · ') && <span style={{ display: 'block', fontSize: 10, fontWeight: 400, letterSpacing: 0, textTransform: 'none', marginTop: 3 }}>{label.split(' · ')[1]}</span>}</span>
         <span aria-hidden="true" style={{ fontSize: 9 }}>{direction === 'ascending' ? '▲' : direction === 'descending' ? '▼' : '↕'}</span>
       </button>
     </th>
@@ -45,9 +44,19 @@ export default function BuildScenario() {
 
   const scenario = useScenario(cases, selectedIds)
 
-  const [totals,        setTotals]        = useState([])
-  const [screenMetric,  setScreenMetric]  = useState('')
-  const [screenYear,    setScreenYear]    = useState('2026')
+  const [references, setReferences] = useState(DEFAULT_REFERENCES)
+  const referenceData = useReferenceMeasures(references)
+  const referenceColumns = references.map((ref, index) => ({ key: REFERENCE_KEYS[index], label: referenceLabel(ref), numeric: true }))
+  const columns = SCENARIO_CASE_COLUMNS.filter(column => !REFERENCE_KEYS.includes(column.key)).concat(referenceColumns)
+  const shortlistColumns = columns.filter(column => column.key !== 'country')
+  const metricOptions = [...new Set([...DEFAULT_REFERENCES.map(ref => ref.metric), ...metrics])]
+    .map(metric => ({ value: metric, label: metric === NPV_METRIC ? 'Post-tax NPV @ 8% ($m)' : metric }))
+  function changeReference(index, field, value) {
+    setReferences(prev => prev.map((ref, i) => i === index ? updateReference(ref, field, value) : ref))
+  }
+  function withReferences(row) {
+    return { ...row, ...Object.fromEntries(REFERENCE_KEYS.map((key, index) => [key, referenceData.values?.[index].get(row.id) ?? null])) }
+  }
   const [availableSearch, setAvailableSearch] = useState('')
   const [availableOpen, setAvailableOpen] = useState(false)
   const [availableSort, setAvailableSort] = useState(null)
@@ -81,27 +90,12 @@ export default function BuildScenario() {
     if (workingCases.length > 0) scenario.initCases(workingCases, [...selectedIds])
   }, [cases, selectedIds]) // eslint-disable-line
 
-  useEffect(() => {
-    getTotals().then(setTotals).catch(() => setTotals([]))
-  }, [])
-
-  useEffect(() => {
-    if (metrics.length && !screenMetric) setScreenMetric(metrics[0])
-  }, [metrics]) // eslint-disable-line
-
-  function getRef(caseStr) {
-    if (!screenMetric || !screenYear || !totals.length) return null
-    const col = YEAR_COL_MAP[screenYear]
-    const row = totals.find(r => r.case === caseStr && r.metric === screenMetric)
-    return row ? row[col] : null
-  }
-
   const sortedAvailableCases = sortScenarioCases(
-    visibleAvailableCases.map(c => ({ ...c, reference: getRef(c.case) })),
+    visibleAvailableCases.map(withReferences),
     availableSort,
   )
   const sortedShortlistedCases = sortScenarioCases(
-    workingCases.map(c => ({ ...c, reference: getRef(c.case) })),
+    workingCases.map(withReferences),
     shortlistSort,
   )
 
@@ -205,21 +199,30 @@ export default function BuildScenario() {
         </label>
       </div>
 
-      {/* Reference screening selector */}
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', padding: '0.75rem 1rem', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, color: 'var(--color-text-muted)', fontWeight: 500 }}>Reference screening</span>
-        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-          Metric
-          <select value={screenMetric} onChange={e => setScreenMetric(e.target.value)} style={{ fontSize: 13, padding: '3px 6px', border: '1px solid var(--color-border)', borderRadius: 4 }}>
-            {metrics.map(m => <option key={m}>{m}</option>)}
-          </select>
-        </label>
-        <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-          Period
-          <select value={screenYear} onChange={e => setScreenYear(e.target.value)} style={{ fontSize: 13, padding: '3px 6px', border: '1px solid var(--color-border)', borderRadius: 4 }}>
-            {YEAR_OPTIONS.map(y => <option key={y}>{y}</option>)}
-          </select>
-        </label>
+      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)' }}>
+        <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 8 }}>Reference measures</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem 1.5rem' }}>
+          {references.map((ref, index) => (
+            <div key={REFERENCE_KEYS[index]} style={{ flex: '1 1 240px', minWidth: 0 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                <span style={{ whiteSpace: 'nowrap' }}>Metric {index + 1}</span>
+                <Select aria-label={`Reference metric ${index + 1}`} value={ref.metric} options={metricOptions}
+                  onChange={value => changeReference(index, 'metric', value)} style={{ minWidth: 0, width: '100%' }} />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 6 }}>
+                Period
+                <Select aria-label={`Reference period ${index + 1}`} value={ref.period}
+                  options={REFERENCE_PERIODS.filter(p => ref.metric !== NPV_METRIC || !p.average)}
+                  onChange={value => changeReference(index, 'period', value)} />
+              </label>
+            </div>
+          ))}
+        </div>
+        <p className="text-small text-muted" style={{ margin: '8px 0 0' }}>Reference values before scenario adjustments. NPV uses an 8% discount rate and a fixed 2026 base.</p>
+        {referenceData.loading && <p role="status" className="text-small" style={{ margin: '6px 0 0' }}>Loading reference values…</p>}
+        {referenceData.error && <p role="alert" style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-negative)' }}>
+          Reference values could not be loaded. <button type="button" onClick={referenceData.retry}>Retry reference values</button>
+        </p>}
       </div>
 
       {/* Case configuration table */}
@@ -254,7 +257,7 @@ export default function BuildScenario() {
         <table aria-label="Shortlisted cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface)', borderBottom: '2px solid var(--color-border-strong)' }}>
-              {SHORTLIST_CASE_COLUMNS.map(column => (
+              {shortlistColumns.map(column => (
                 <SortableCaseHeader key={column.key} column={column} sort={shortlistSort} onSort={toggleShortlistSort} />
               ))}
               {['Scenario configuration', 'Configure', 'Shortlist'].map(h => (
@@ -265,7 +268,7 @@ export default function BuildScenario() {
           <tbody>
             {workingCases.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                <td colSpan={shortlistColumns.length + 3} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
                   <span role="status">No cases shortlisted. All cases will use their reference profiles. Expand Available cases below to shortlist cases for adjustment, exclusion, or review.</span>
                 </td>
               </tr>
@@ -278,7 +281,7 @@ export default function BuildScenario() {
                   <td style={{ padding: '7px 10px', fontWeight: 500, whiteSpace: 'nowrap' }}>{c.case_name}</td>
                   <td style={{ padding: '7px 10px' }}>{c.region}</td>
                   <td style={{ padding: '7px 10px' }}>{c.plan_type}</td>
-                  <td style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(c.reference)}</td>
+                  {REFERENCE_KEYS.map(key => <td key={key} style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{referenceData.loading ? '…' : fmt(c[key])}</td>)}
                   <td style={{ padding: '7px 10px' }}>
                     {configurationSummary(cs)}
                   </td>
@@ -351,7 +354,7 @@ export default function BuildScenario() {
           <table aria-label="Available cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--color-surface)', borderBottom: '2px solid var(--color-border-strong)' }}>
-                {SCENARIO_CASE_COLUMNS.map(column => (
+                {columns.map(column => (
                   <SortableCaseHeader key={column.key} column={column} sort={availableSort} onSort={toggleAvailableSort} />
                 ))}
                 <th scope="col" style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Shortlist</th>
@@ -360,7 +363,7 @@ export default function BuildScenario() {
             <tbody>
               {visibleAvailableCases.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                  <td colSpan={columns.length + 1} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
                     <span role="status">{availableCases.length === 0 ? 'All cases are shortlisted.' : 'No available cases match your search.'}</span>
                   </td>
                 </tr>
@@ -372,7 +375,7 @@ export default function BuildScenario() {
                   <td style={{ padding: '7px 10px' }}>{c.region}</td>
                   <td style={{ padding: '7px 10px' }}>{c.country}</td>
                   <td style={{ padding: '7px 10px' }}>{c.plan_type}</td>
-                  <td style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(c.reference)}</td>
+                  {REFERENCE_KEYS.map(key => <td key={key} style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{referenceData.loading ? '…' : fmt(c[key])}</td>)}
                   <td style={{ padding: '7px 10px' }}>
                     <button
                       type="button"

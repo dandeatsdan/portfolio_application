@@ -6,7 +6,9 @@ export const SCENARIO_CASE_COLUMNS = [
   { key: 'region', label: 'Region' },
   { key: 'country', label: 'Country' },
   { key: 'plan_type', label: 'Plan Type' },
-  { key: 'reference', label: 'Reference', numeric: true },
+  { key: 'reference', label: 'Reference 1', numeric: true },
+  { key: 'reference2', label: 'Reference 2', numeric: true },
+  { key: 'reference3', label: 'Reference 3', numeric: true },
 ]
 
 export const SHORTLIST_CASE_COLUMNS = SCENARIO_CASE_COLUMNS.filter(column => column.key !== 'country')
