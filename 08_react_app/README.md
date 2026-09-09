@@ -13,7 +13,7 @@ This is subsequent development building on the original DT603 framework. Origina
 - Python 3.10 or later, preferably in an activated virtual environment.
 - Node.js and npm compatible with the Vite version in `frontend/package.json`.
 - Both `07_streamlit_app` and `08_react_app` retained in their existing sibling locations.
-- `04_user_guides/application_user_guide.pdf` retained at the repository root's guide location; the frontend bundles it for the Operations guide link.
+- `04_user_guides/operations_user_guide.pdf` retained at the repository root's guide location; the frontend bundles it for the Operations guide link.
 
 The Streamlit server does not need to run. Its directory supplies the shared Python package and sample data.
 
@@ -68,9 +68,9 @@ Filters, shortlisted case IDs, and the latest scenario result are managed throug
 
 All loaded cases are included using their **reference profiles** by default. The shortlist identifies cases to modify, explicitly exclude, or keep handy for review. Cases in **Available cases** remain included using their reference profiles. Removing a case from the shortlist restores its reference profile and includes it in the scenario; internally, this resets inclusion to yes, operation to No Change, and all five parameters to zero. Run instructions cover all loaded cases, using overrides only for shortlisted cases; an empty shortlist runs the full unchanged portfolio. Running with every case explicitly excluded is disabled. This contract applies to React; active Streamlit behaviour is unchanged by this correction.
 
-The **Operations guide** button beside the shortlist opens a help panel with the four operation categories, expandable descriptions, required/optional inputs and examples. It supports keyboard navigation, Escape and a close button, and restores focus on dismissal. Opening help does not change scenario configuration. The full PDF opens separately at the operations section (pages 9–16).
+The **Operations guide** button beside the shortlist opens a help panel with the four operation categories, expandable descriptions, required/optional inputs and examples. It supports keyboard navigation, Escape and a close button, and restores focus on dismissal. Opening help does not change scenario configuration. The dedicated operations PDF opens separately from its first page.
 
-Guide text is maintained in `frontend/src/components/operationGuideContent.js`, with input contracts checked against the sample operations CSV and selectable frontend operations. Examples follow the shared engine's fraction inputs and negative cash-outflow values. The original PDF remains unchanged; its page 13 transaction summary differs from both the Excel and shared Python implementation for farm-in payments, which affect Cash Capex rather than sale proceeds. The current table still exposes three parameter inputs; the guide documents all five where applicable ahead of the planned case configuration panel.
+Guide text is maintained in `frontend/src/components/operationGuideContent.js`, with input contracts checked against the sample operations CSV and selectable frontend operations. Examples follow the shared engine's fraction inputs and negative cash-outflow values. The operations PDF remains unchanged; its page 5 transaction summary differs from both the Excel and shared Python implementation for farm-in payments, which affect Cash Capex rather than sale proceeds. The current table still exposes three parameter inputs; the guide documents all five where applicable ahead of the planned case configuration panel.
 
 ## Code and data
 

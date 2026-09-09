@@ -1,7 +1,7 @@
-// Help content adapted from application_user_guide.pdf, pages 9–16, and checked
+// Help content adapted from operations_user_guide.pdf, pages 1–8, and checked
 // against 005_operations_library.csv and the shared engine/operations.py.
 // The CSV defines parameter positions, requiredness and fractional percentage
-// inputs. Unlike the PDF's page 13 wording, both the Excel and shared Python
+// inputs. Unlike the PDF's page 5 wording, both the Excel and shared Python
 // implementations record farm-in payments in Cash Capex, not sale proceeds.
 // Cost examples below use the application's negative cash-outflow convention.
 // This module describes operations; it does not configure or execute them.

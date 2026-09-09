@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { ArrowRight, ChevronDown, ExternalLink, X } from 'lucide-react'
 import { OPERATION_GUIDE_CATEGORIES } from './operationGuideContent'
-import userGuideUrl from '../../../../04_user_guides/application_user_guide.pdf?url'
+import operationsGuideUrl from '../../../../04_user_guides/operations_user_guide.pdf?url'
 import './OperationsGuide.css'
 
 export default function OperationsGuide({ open, onClose }) {
@@ -119,12 +119,12 @@ export default function OperationsGuide({ open, onClose }) {
       </div>
 
       <footer className="operations-guide__footer">
-        <a href={`${userGuideUrl}#page=9`} target="_blank" rel="noopener noreferrer">
-          Open full user guide (PDF)
+        <a href={operationsGuideUrl} target="_blank" rel="noopener noreferrer">
+          Open operations user guide (PDF)
           <ExternalLink size={14} aria-hidden="true" />
           <span className="operations-guide__sr-only"> (opens in a new tab)</span>
         </a>
-        <p>Operations section: pages 9–16</p>
+        <p>Operation library and parameter reference</p>
       </footer>
     </dialog>
   )
