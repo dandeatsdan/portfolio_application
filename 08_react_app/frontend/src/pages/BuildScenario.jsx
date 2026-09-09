@@ -8,6 +8,7 @@ import { useReferenceMeasures } from '../hooks/useReferenceMeasures'
 import { DEFAULT_REFERENCES, REFERENCE_KEYS, REFERENCE_PERIODS, NPV_METRIC, referenceLabel, updateReference } from './referenceMeasures'
 import { SelectionContext, ScenarioResultContext } from '../App'
 import { SCENARIO_CASE_COLUMNS, sortScenarioCases } from './scenarioCaseSort'
+import RunConfirmation from '../components/RunConfirmation'
 import OperationsGuide from '../components/OperationsGuide'
 import CaseConfiguration from '../components/CaseConfiguration'
 import { configurationSummary } from '../components/caseConfiguration'
@@ -63,6 +64,7 @@ export default function BuildScenario() {
   const [shortlistSort, setShortlistSort] = useState(null)
   const [operationsGuideOpen, setOperationsGuideOpen] = useState(false)
   const [editingCaseId, setEditingCaseId] = useState(null)
+  const [confirmRunOpen, setConfirmRunOpen] = useState(false)
 
   // Shortlist membership is separate from whether a shortlisted case is included in a run.
   const workingCases = cases.filter(c => selectedIds.has(c.id))
@@ -120,6 +122,7 @@ export default function BuildScenario() {
   const { includedCount, modifiedCount } = scenario
 
   async function handleRun() {
+    setConfirmRunOpen(false)
     await scenario.run()
   }
 
@@ -150,7 +153,8 @@ export default function BuildScenario() {
         </div>
         <button
           type="button"
-          onClick={handleRun}
+          onClick={() => setConfirmRunOpen(true)}
+          aria-haspopup="dialog"
           disabled={scenario.running || includedCount === 0}
           style={{
             padding: '0.7rem 1.6rem',
@@ -404,6 +408,8 @@ export default function BuildScenario() {
         />
       </label>
 
+      {confirmRunOpen && <RunConfirmation name={scenario.name} cases={cases} selectedIds={selectedIds}
+        caseConfig={scenario.caseConfig} onCancel={() => setConfirmRunOpen(false)} onConfirm={handleRun} />}
       {editingCase && <CaseConfiguration key={editingCase.id} caseRow={editingCase} config={ops[editingCase.id]}
         onCancel={() => setEditingCaseId(null)}
         onApply={config => { scenario.applyCaseConfig(editingCase.id, config); setEditingCaseId(null) }} />}
