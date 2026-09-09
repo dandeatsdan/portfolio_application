@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createConfigurationDraft, validateConfiguration, configurationToApply, configurationSummary } from './caseConfiguration.js'
+import { createConfigurationDraft, validateConfiguration, configurationToApply, configurationSummary } from './caseConfigUtils.js'
 import { buildScenarioInstructions, defaultCase } from '../hooks/scenarioInstructions.js'
 
 const draft = (operation, params, include = true) => ({ include, operation, params: Array.from({ length: 5 }, (_, i) => params[i] ?? '') })

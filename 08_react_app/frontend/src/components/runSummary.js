@@ -1,5 +1,5 @@
 import { buildScenarioInstructions } from '../hooks/scenarioInstructions.js'
-import { findOperation } from './caseConfiguration.js'
+import { findOperation } from './caseConfigUtils.js'
 
 // Use the same complete population and shortlist rules as the run payload.
 export function summarizeRun(cases, selectedIds, caseConfig) {

@@ -366,7 +366,7 @@ export default function PortfolioViewer() {
               Ranked Contributors
             </span>
             <Select value={rankBy}     onChange={v => { setRankBy(v); setChartSelection(null) }}     options={RANK_BY_OPTIONS} />
-            <Select value={rankMetric} onChange={setRankMetric} options={[...metrics, { value: NPV_METRIC, label: `Post-tax NPV @ ${DISCOUNT_RATE}% ($m)` }]} style={{ maxWidth: 210 }} />
+            <Select value={rankMetric} onChange={setRankMetric} options={[...metrics, { value: NPV_METRIC, label: 'NPV8 ($m)' }]} style={{ maxWidth: 210 }} />
             <Select value={topN}       onChange={setTopN}       options={TOP_N_OPTIONS} />
             {rankMetric === NPV_METRIC && <span style={{ fontSize: 11 }}>Fixed 2026 base; period 1.</span>}
           </div>

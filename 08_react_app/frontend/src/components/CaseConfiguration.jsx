@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { OPERATION_GUIDE_CATEGORIES } from './operationGuideContent'
-import { createConfigurationDraft, findOperation, validateConfiguration, configurationToApply } from './caseConfiguration'
+import { OPERATION_GUIDE_CATEGORIES } from './operationGuideData'
+import { createConfigurationDraft, findOperation, validateConfiguration, configurationToApply } from './caseConfigUtils'
 import './OperationsGuide.css'
 import './CaseConfiguration.css'
 

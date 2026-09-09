@@ -1,37 +1,39 @@
 import { useState, useEffect, useContext } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CircleHelp, Pencil } from 'lucide-react'
+import { CircleHelp, Pencil, SlidersHorizontal } from 'lucide-react'
 import { usePortfolio } from '../hooks/usePortfolio'
 import { useScenario } from '../hooks/useScenario'
 import Select from '../components/Select'
 import { useReferenceMeasures } from '../hooks/useReferenceMeasures'
-import { DEFAULT_REFERENCES, REFERENCE_KEYS, REFERENCE_PERIODS, NPV_METRIC, referenceLabel, updateReference } from './referenceMeasures'
-import { SelectionContext, ScenarioResultContext } from '../App'
+import { DEFAULT_REFERENCES, REFERENCE_KEYS, referenceLabel, metricDisplayName } from './referenceMeasures'
+import { SelectionContext, ScenarioResultContext, SidePanelContext, FiltersContext } from '../App'
+import FilterRail from '../components/FilterRail'
 import { SCENARIO_CASE_COLUMNS, sortScenarioCases } from './scenarioCaseSort'
 import RunConfirmation from '../components/RunConfirmation'
 import OperationsGuide from '../components/OperationsGuide'
 import CaseConfiguration from '../components/CaseConfiguration'
-import { configurationSummary } from '../components/caseConfiguration'
+import ReferenceConfig from '../components/ReferenceConfig'
+import { configurationSummary } from '../components/caseConfigUtils'
 
 function fmt(v) {
   if (v == null) return '—'
   return Number(v).toLocaleString(undefined, { maximumFractionDigits: 1 })
 }
 
-function SortableCaseHeader({ column: { key, label, numeric }, sort, onSort }) {
+function SortableCaseHeader({ column: { key, label, title: colTitle, numeric }, sort, onSort }) {
   const direction = sort?.key === key ? sort.direction : undefined
   const nextDirection = direction === 'ascending' ? 'descending' : 'ascending'
+  const tooltip = colTitle ?? label
   return (
-    <th scope="col" aria-sort={direction} style={{ padding: '8px 10px', textAlign: numeric ? 'right' : 'left', fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+    <th scope="col" aria-sort={direction} title={tooltip} style={{ padding: '8px 10px', textAlign: numeric ? 'right' : 'left', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
       <button
         type="button"
         onClick={() => onSort(key)}
-        aria-label={`${label}: sort ${nextDirection}`}
-        title={`${label}: sort ${nextDirection}`}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: numeric ? 'flex-end' : 'flex-start', gap: 3, width: '100%', padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit' }}
+        aria-label={`${tooltip}: sort ${nextDirection}`}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: numeric ? 'flex-end' : 'flex-start', gap: 3, width: '100%', padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit', whiteSpace: 'nowrap' }}
       >
-        <span>{label.split(' · ')[0]}{label.includes(' · ') && <span style={{ display: 'block', fontSize: 10, fontWeight: 400, letterSpacing: 0, textTransform: 'none', marginTop: 3 }}>{label.split(' · ')[1]}</span>}</span>
-        <span aria-hidden="true" style={{ fontSize: 9 }}>{direction === 'ascending' ? '▲' : direction === 'descending' ? '▼' : '↕'}</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        <span aria-hidden="true" style={{ fontSize: 9, flexShrink: 0 }}>{direction === 'ascending' ? '▲' : direction === 'descending' ? '▼' : '↕'}</span>
       </button>
     </th>
   )
@@ -42,19 +44,23 @@ export default function BuildScenario() {
   const { cases, metrics, loading, error } = usePortfolio()
   const { selectedIds, setSelectedIds } = useContext(SelectionContext)
   const { setScenarioResult, setLastRunError } = useContext(ScenarioResultContext)
+  const { setSidePanel } = useContext(SidePanelContext)
+  const { filters, setFilters } = useContext(FiltersContext)
+
+  useEffect(() => {
+    setSidePanel(<FilterRail filters={filters} onChange={setFilters} cases={cases} />)
+    return () => setSidePanel(null)
+  }, [filters, cases, setSidePanel, setFilters])
 
   const scenario = useScenario(cases, selectedIds)
 
   const [references, setReferences] = useState(DEFAULT_REFERENCES)
   const referenceData = useReferenceMeasures(references)
-  const referenceColumns = references.map((ref, index) => ({ key: REFERENCE_KEYS[index], label: referenceLabel(ref), numeric: true }))
+  const referenceColumns = references.map((ref, index) => ({ key: REFERENCE_KEYS[index], label: metricDisplayName(ref.metric), title: referenceLabel(ref), numeric: true }))
   const columns = SCENARIO_CASE_COLUMNS.filter(column => !REFERENCE_KEYS.includes(column.key)).concat(referenceColumns)
-  const shortlistColumns = columns.filter(column => column.key !== 'country')
+  const shortlistColumns = columns
   const metricOptions = [...new Set([...DEFAULT_REFERENCES.map(ref => ref.metric), ...metrics])]
-    .map(metric => ({ value: metric, label: metric === NPV_METRIC ? 'Post-tax NPV @ 8% ($m)' : metric }))
-  function changeReference(index, field, value) {
-    setReferences(prev => prev.map((ref, i) => i === index ? updateReference(ref, field, value) : ref))
-  }
+    .map(metric => ({ value: metric, label: metricDisplayName(metric) }))
   function withReferences(row) {
     return { ...row, ...Object.fromEntries(REFERENCE_KEYS.map((key, index) => [key, referenceData.values?.[index].get(row.id) ?? null])) }
   }
@@ -63,6 +69,7 @@ export default function BuildScenario() {
   const [availableSort, setAvailableSort] = useState(null)
   const [shortlistSort, setShortlistSort] = useState(null)
   const [operationsGuideOpen, setOperationsGuideOpen] = useState(false)
+  const [referenceConfigOpen, setReferenceConfigOpen] = useState(false)
   const [editingCaseId, setEditingCaseId] = useState(null)
   const [confirmRunOpen, setConfirmRunOpen] = useState(false)
 
@@ -201,38 +208,29 @@ export default function BuildScenario() {
               style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)', pointerEvents: 'none' }} />
           </span>
         </label>
-      </div>
-
-      <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)' }}>
-        <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 8 }}>Reference measures</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem 1.5rem' }}>
-          {references.map((ref, index) => (
-            <div key={REFERENCE_KEYS[index]} style={{ flex: '1 1 240px', minWidth: 0 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                <span style={{ whiteSpace: 'nowrap' }}>Metric {index + 1}</span>
-                <Select aria-label={`Reference metric ${index + 1}`} value={ref.metric} options={metricOptions}
-                  onChange={value => changeReference(index, 'metric', value)} style={{ minWidth: 0, width: '100%' }} />
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 6 }}>
-                Period
-                <Select aria-label={`Reference period ${index + 1}`} value={ref.period}
-                  options={REFERENCE_PERIODS.filter(p => ref.metric !== NPV_METRIC || !p.average)}
-                  onChange={value => changeReference(index, 'period', value)} />
-              </label>
-            </div>
-          ))}
-        </div>
-        <p className="text-small text-muted" style={{ margin: '8px 0 0' }}>Reference values before scenario adjustments. NPV uses an 8% discount rate and a fixed 2026 base.</p>
-        {referenceData.loading && <p role="status" className="text-small" style={{ margin: '6px 0 0' }}>Loading reference values…</p>}
-        {referenceData.error && <p role="alert" style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-negative)' }}>
-          Reference values could not be loaded. <button type="button" onClick={referenceData.retry}>Retry reference values</button>
-        </p>}
+        <label style={{ flex: '1 1 100%', minWidth: 0, fontSize: 13 }}>
+          <span style={{ display: 'block', marginBottom: 4, color: 'var(--color-text-muted)' }}>Scenario Rationale</span>
+          <textarea value={scenario.rationale} onChange={e => scenario.setRationale(e.target.value)}
+            placeholder="Describe the business reasoning behind these scenario choices…"
+            rows={3}
+            style={{ width: '100%', padding: '8px', border: '1px solid var(--color-border)', borderRadius: 4, fontSize: 13, fontFamily: 'var(--font-family)', resize: 'vertical' }}
+          />
+        </label>
       </div>
 
       {/* Case configuration table */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.35rem' }}>
         <h3 style={{ margin: 0 }}>Shortlisted cases ({workingCases.length})</h3>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => setReferenceConfigOpen(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 4, background: '#fff', color: 'var(--color-accent-dark)', fontSize: 12 }}
+          >
+            <SlidersHorizontal size={14} aria-hidden="true" />
+            Edit metrics
+          </button>
           <button
             type="button"
             aria-haspopup="dialog"
@@ -254,11 +252,31 @@ export default function BuildScenario() {
           </button>
         </div>
       </div>
+      <ReferenceConfig
+        open={referenceConfigOpen}
+        references={references}
+        metricOptions={metricOptions}
+        onApply={setReferences}
+        onClose={() => setReferenceConfigOpen(false)}
+      />
       <p role="status" className="text-small text-muted" style={{ marginBottom: '0.5rem' }}>
         Portfolio: {includedCount} included · {cases.length - includedCount} excluded · {modifiedCount} modified
       </p>
       <div style={{ overflowX: 'auto', marginBottom: '1.25rem' }}>
-        <table aria-label="Shortlisted cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <table aria-label="Shortlisted cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: '3%' }} />   {/* ID */}
+            <col style={{ width: '14%' }} />  {/* Case Name */}
+            <col style={{ width: '9%' }} />   {/* Region */}
+            <col style={{ width: '9%' }} />   {/* Country */}
+            <col style={{ width: '8%' }} />   {/* Plan Type */}
+            <col style={{ width: '8%' }} />   {/* Ref 1 */}
+            <col style={{ width: '8%' }} />   {/* Ref 2 */}
+            <col style={{ width: '8%' }} />   {/* Ref 3 */}
+            <col style={{ width: '18%' }} />  {/* Scenario Config */}
+            <col style={{ width: '8%' }} />   {/* Configure */}
+            <col style={{ width: '7%' }} />   {/* Remove */}
+          </colgroup>
           <thead>
             <tr style={{ background: 'var(--color-surface)', borderBottom: '2px solid var(--color-border-strong)' }}>
               {shortlistColumns.map(column => (
@@ -282,10 +300,11 @@ export default function BuildScenario() {
               return (
                 <tr key={c.id} style={{ borderBottom: '1px solid var(--color-border)', background: c.id === editingCaseId ? '#edf5e8' : cs.include ? 'transparent' : 'var(--color-surface)', boxShadow: c.id === editingCaseId ? 'inset 3px 0 var(--color-accent-dark)' : undefined }}>
                   <td style={{ padding: '7px 10px', textAlign: 'right', color: 'var(--color-text-muted)' }}>{c.id}</td>
-                  <td style={{ padding: '7px 10px', fontWeight: 500, whiteSpace: 'nowrap' }}>{c.case_name}</td>
+                  <td style={{ padding: '7px 10px', fontWeight: 500 }}>{c.case_name}</td>
                   <td style={{ padding: '7px 10px' }}>{c.region}</td>
+                  <td style={{ padding: '7px 10px' }}>{c.country}</td>
                   <td style={{ padding: '7px 10px' }}>{c.plan_type}</td>
-                  {REFERENCE_KEYS.map(key => <td key={key} style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{referenceData.loading ? '…' : fmt(c[key])}</td>)}
+                  {REFERENCE_KEYS.map(key => <td key={key} style={{ padding: '7px 10px', textAlign: 'right' }}>{referenceData.loading ? '…' : fmt(c[key])}</td>)}
                   <td style={{ padding: '7px 10px' }}>
                     {configurationSummary(cs)}
                   </td>
@@ -355,7 +374,17 @@ export default function BuildScenario() {
           </div>
         </div>
         <div style={{ overflowX: 'auto', marginBottom: '1.25rem' }}>
-          <table aria-label="Available cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table aria-label="Available cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '3%' }} />   {/* ID */}
+              <col style={{ width: '14%' }} />  {/* Case Name */}
+              <col style={{ width: '9%' }} />   {/* Region */}
+              <col style={{ width: '9%' }} />   {/* Country */}
+              <col style={{ width: '8%' }} />   {/* Plan Type */}
+              <col style={{ width: '8%' }} />   {/* Ref 1 */}
+              <col style={{ width: '8%' }} />   {/* Ref 2 */}
+              <col style={{ width: '8%' }} />   {/* Ref 3 = 67% total, 33% to action */}
+            </colgroup>
             <thead>
               <tr style={{ background: 'var(--color-surface)', borderBottom: '2px solid var(--color-border-strong)' }}>
                 {columns.map(column => (
@@ -375,11 +404,11 @@ export default function BuildScenario() {
               {sortedAvailableCases.map(c => (
                 <tr key={c.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                   <td style={{ padding: '7px 10px', textAlign: 'right', color: 'var(--color-text-muted)' }}>{c.id}</td>
-                  <td style={{ padding: '7px 10px', fontWeight: 500, whiteSpace: 'nowrap' }}>{c.case_name}</td>
+                  <td style={{ padding: '7px 10px', fontWeight: 500 }}>{c.case_name}</td>
                   <td style={{ padding: '7px 10px' }}>{c.region}</td>
                   <td style={{ padding: '7px 10px' }}>{c.country}</td>
                   <td style={{ padding: '7px 10px' }}>{c.plan_type}</td>
-                  {REFERENCE_KEYS.map(key => <td key={key} style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{referenceData.loading ? '…' : fmt(c[key])}</td>)}
+                  {REFERENCE_KEYS.map(key => <td key={key} style={{ padding: '7px 10px', textAlign: 'right' }}>{referenceData.loading ? '…' : fmt(c[key])}</td>)}
                   <td style={{ padding: '7px 10px' }}>
                     <button
                       type="button"
@@ -397,16 +426,6 @@ export default function BuildScenario() {
           </table>
         </div>
       </div>
-
-      {/* Rationale */}
-      <label style={{ display: 'block', marginBottom: '1.25rem', fontSize: 13 }}>
-        <span style={{ display: 'block', marginBottom: 4, color: 'var(--color-text-muted)' }}>Scenario Rationale</span>
-        <textarea value={scenario.rationale} onChange={e => scenario.setRationale(e.target.value)}
-          placeholder="Describe the business reasoning behind these scenario choices…"
-          rows={3}
-          style={{ width: '100%', padding: '8px', border: '1px solid var(--color-border)', borderRadius: 4, fontSize: 13, fontFamily: 'var(--font-family)', resize: 'vertical' }}
-        />
-      </label>
 
       {confirmRunOpen && <RunConfirmation name={scenario.name} cases={cases} selectedIds={selectedIds}
         caseConfig={scenario.caseConfig} onCancel={() => setConfirmRunOpen(false)} onConfirm={handleRun} />}

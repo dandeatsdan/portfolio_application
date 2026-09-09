@@ -8,7 +8,10 @@ import { getWaterfall, getScenarioValuation } from '../api/client'
 import KpiCard from '../components/KpiCard'
 import ChartPanel from '../components/ChartPanel'
 import JourneyStrip from '../components/JourneyStrip'
-import { ScenarioResultContext } from '../App'
+import FilterRail from '../components/FilterRail'
+import { ScenarioResultContext, SidePanelContext, FiltersContext } from '../App'
+import { usePortfolio } from '../hooks/usePortfolio'
+import { metricDisplayName } from './referenceMeasures'
 import theme from '../theme'
 
 const PALETTE = theme.chartPalette
@@ -26,6 +29,14 @@ function sumMetricYears(rows, metric, years) {
 
 export default function ScenarioResults() {
   const { scenarioResult, lastRunError } = useContext(ScenarioResultContext)
+  const { setSidePanel } = useContext(SidePanelContext)
+  const { filters, setFilters } = useContext(FiltersContext)
+  const { cases } = usePortfolio()
+
+  useEffect(() => {
+    setSidePanel(<FilterRail filters={filters} onChange={setFilters} cases={cases} />)
+    return () => setSidePanel(null)
+  }, [filters, cases, setSidePanel, setFilters])
 
   const [wfMetric, setWfMetric]   = useState('Post-Tax Cash Flow')
   const [valuation, setValuation] = useState(null)
@@ -119,7 +130,7 @@ export default function ScenarioResults() {
         <KpiCard title="Cumulative Production — Scenario" value={fmt(sProd)} unit="mmboe" delta={sProd - bProd} deltaPct={bProd ? (sProd - bProd) / bProd * 100 : null} help={`Reference: ${fmt(bProd)}`} />
         <KpiCard title="Post-Tax FCF — Scenario" value={fmt(sFcf)} unit="$m" delta={sFcf - bFcf} deltaPct={bFcf ? (sFcf - bFcf) / bFcf * 100 : null} help={`Reference: ${fmt(bFcf)}`} />
         <KpiCard title="Post-Tax RCOP — Scenario" value={fmt(sGm)} unit="$m" delta={sGm - bGm} deltaPct={bGm ? (sGm - bGm) / bGm * 100 : null} help={`Reference: ${fmt(bGm)}`} />
-        <KpiCard title={`Post-Tax NPV @ ${scenarioResult.valuation?.discount_rate ?? 8}%`} value={fmt(valuation?.scenario)} unit="$m" delta={valuation?.delta} help={`Reference: ${fmt(valuation?.baseline)}; fixed 2026 base, period 1.`} />
+        <KpiCard title="NPV8" value={fmt(valuation?.scenario)} unit="$m" delta={valuation?.delta} help={`Reference: ${fmt(valuation?.baseline)}; ${scenarioResult.valuation?.discount_rate ?? 8}% discount rate, fixed 2026 base.`} />
       </div>
       {valuationError && <p role="alert">NPV unavailable: {valuationError}</p>}
       {scenarioResult.diagnostics?.length > 0 && <details><summary>Calculation warnings ({scenarioResult.diagnostics.length})</summary>
@@ -160,10 +171,10 @@ export default function ScenarioResults() {
       </div>
 
       {/* Waterfall */}
-      <ChartPanel title={`Impact Waterfall — ${wfMetric}`} style={{ marginBottom: '1.25rem' }}>
+      <ChartPanel title={`Impact Waterfall — ${metricDisplayName(wfMetric)}`} style={{ marginBottom: '1.25rem' }}>
         <div style={{ marginBottom: '0.5rem' }}>
           <select value={wfMetric} onChange={e => setWfMetric(e.target.value)} style={{ fontSize: 12, padding: '3px 6px', border: '1px solid var(--color-border)', borderRadius: 4 }}>
-            {allMetrics.map(m => <option key={m}>{m}</option>)}
+            {allMetrics.map(m => <option key={m} value={m}>{metricDisplayName(m)}</option>)}
           </select>
         </div>
         {wfData.length > 0 && (

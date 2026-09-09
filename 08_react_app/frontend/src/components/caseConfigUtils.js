@@ -1,4 +1,4 @@
-import { OPERATION_GUIDE_CATEGORIES } from './operationGuideContent.js'
+import { OPERATION_GUIDE_CATEGORIES } from './operationGuideData.js'
 import { defaultCase } from '../hooks/scenarioInstructions.js'
 
 export const configurationOperations = OPERATION_GUIDE_CATEGORIES.flatMap(category => category.operations)

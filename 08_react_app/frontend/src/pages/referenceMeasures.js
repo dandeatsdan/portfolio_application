@@ -10,11 +10,23 @@ export const REFERENCE_PERIODS = [
   ...Array.from({ length: 15 }, (_, i) => ({ value: String(2026 + i), label: String(2026 + i), from: 2026 + i, to: 2026 + i })),
 ]
 
+const METRIC_DISPLAY_NAMES = {
+  'Post-tax NPV':               'NPV8 ($m)',
+  'Total Production (mboed)':   'Production (mboed)',
+  'Post-Tax Cash Flow':         'Post-Tax FCF',
+  'Pre Tax Cash Flow':          'Pre-Tax FCF',
+  'Total Cash Costs':           'Cash Costs',
+}
+
+export function metricDisplayName(metric) {
+  return METRIC_DISPLAY_NAMES[metric] ?? metric
+}
+
 export function referenceLabel({ metric, period }) {
   const timeframe = REFERENCE_PERIODS.find(p => p.value === period)
   const name = metric === PRODUCTION_METRIC
     ? `Production (${timeframe.from !== timeframe.to && !timeframe.average ? 'mmboe' : 'mboed'})`
-    : metric === NPV_METRIC ? 'Post-tax NPV @ 8% ($m)' : metric
+    : metricDisplayName(metric)
   return `${name} · ${timeframe.label}`
 }
 

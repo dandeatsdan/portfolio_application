@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { summarizeRun } from './runConfirmation'
+import { summarizeRun } from './runSummary'
 import './RunConfirmation.css'
 
 export default function RunConfirmation({ name, cases, selectedIds, caseConfig, onCancel, onConfirm }) {

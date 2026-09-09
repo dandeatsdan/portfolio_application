@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { summarizeRun } from './runConfirmation.js'
+import { summarizeRun } from './runSummary.js'
 const cases = [1, 2, 3, 4].map(id => ({ id, case: `Full ${id}`, case_name: 'Same display name' }))
 test('empty shortlist ignores stale configuration and includes all reference cases', () => {
   assert.deepEqual(summarizeRun(cases, new Set(), { 1: { include: false, operation: 'Delay', params: [2] } }), {

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { ArrowRight, ChevronDown, ExternalLink, X } from 'lucide-react'
-import { OPERATION_GUIDE_CATEGORIES } from './operationGuideContent'
+import { OPERATION_GUIDE_CATEGORIES } from './operationGuideData'
 import operationsGuideUrl from '../../../../04_user_guides/operations_user_guide.pdf?url'
 import './OperationsGuide.css'
 

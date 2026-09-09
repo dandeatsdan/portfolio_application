@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { OPERATION_LABELS } from '../hooks/scenarioInstructions.js'
-import { OPERATION_GUIDE_CATEGORIES } from './operationGuideContent.js'
+import { OPERATION_GUIDE_CATEGORIES } from './operationGuideData.js'
 
 // Compare help against the library consumed by the original workflow, rather
 // than a second expected list maintained alongside the guide content.
