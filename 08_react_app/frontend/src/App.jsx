@@ -2,7 +2,7 @@
  * App root — router, shared context, AppShell.
  *
  * Shared contexts:
- *   SelectionContext   — shortlisted case IDs (set in Portfolio Viewer, read in Build a Scenario)
+ *   SelectionContext   — shortlisted case IDs, edited in Portfolio Viewer and Build a Scenario
  *   SidePanelContext   — lets inner pages inject content into AppShell's left panel
  *   FiltersContext     — global filter state, persisted across all pages
  *   ScenarioResultContext — last scenario run result

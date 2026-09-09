@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { usePortfolio } from '../hooks/usePortfolio'
 import { useScenario, OPERATION_LABELS } from '../hooks/useScenario'
 import { getTotals } from '../api/client'
-import JourneyStrip from '../components/JourneyStrip'
 import { SelectionContext, ScenarioResultContext } from '../App'
 
 const YEAR_OPTIONS = ['Total 5Y', 'Average 5Y', '2026', '2027', '2028', '2029', '2030']
@@ -17,17 +16,36 @@ function fmt(v) {
 export default function BuildScenario() {
   const navigate = useNavigate()
   const { cases, metrics, loading, error } = usePortfolio()
-  const { selectedIds } = useContext(SelectionContext)
+  const { selectedIds, setSelectedIds } = useContext(SelectionContext)
   const { setScenarioResult, setLastRunError } = useContext(ScenarioResultContext)
 
-  const scenario = useScenario(cases)
+  const scenario = useScenario(cases, selectedIds)
 
   const [totals,        setTotals]        = useState([])
   const [screenMetric,  setScreenMetric]  = useState('')
   const [screenYear,    setScreenYear]    = useState('2026')
+  const [availableSearch, setAvailableSearch] = useState('')
 
-  // Filter to selected cases (or all if nothing selected)
-  const workingCases = selectedIds.size > 0 ? cases.filter(c => selectedIds.has(c.id)) : cases
+  // Shortlist membership is separate from whether a shortlisted case is included in a run.
+  const workingCases = cases.filter(c => selectedIds.has(c.id))
+  const availableCases = cases.filter(c => !selectedIds.has(c.id))
+  const visibleAvailableCases = availableCases.filter(c =>
+    (c.case_name ?? '').toLowerCase().includes(availableSearch.trim().toLowerCase())
+  )
+
+  function addToShortlist(id) {
+    scenario.resetCase(id)
+    setSelectedIds(prev => new Set([...prev, id]))
+  }
+
+  function removeFromShortlist(id) {
+    scenario.resetCase(id)
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (workingCases.length > 0) scenario.initCases(workingCases, [...selectedIds])
@@ -52,10 +70,10 @@ export default function BuildScenario() {
     workingCases.map(c => [c.id, scenario.caseConfig[c.id] ?? { include: true, operation: 'No Change', params: [0,0,0,0,0] }])
   )
 
-  const includedCount = workingCases.filter(c => ops[c.id]?.include !== false).length
+  const { includedCount, modifiedCount } = scenario
 
   async function handleRun() {
-    await scenario.run(workingCases)
+    await scenario.run()
   }
 
   useEffect(() => {
@@ -75,12 +93,10 @@ export default function BuildScenario() {
 
   return (
     <div>
-      <JourneyStrip current="build" />
       <h2 style={{ marginBottom: '0.25rem' }}>Build a Scenario</h2>
       <p className="text-small text-muted" style={{ marginBottom: '1.25rem' }}>
-        {selectedIds.size > 0
-          ? `Showing ${workingCases.length} case(s) shortlisted from Portfolio Viewer.`
-          : 'No Portfolio Viewer selection — showing all cases.'}
+        All cases are included using their reference profiles by default. Shortlist cases to adjust assumptions, exclude them, or keep them handy for review.
+        Removing a case from the shortlist restores its reference profile and includes it in the scenario.
       </p>
 
       {/* Scenario metadata */}
@@ -118,8 +134,8 @@ export default function BuildScenario() {
       {/* Readiness summary */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
         {[
-          { label: '① Case inclusion',      value: `${includedCount} / ${workingCases.length}` },
-          { label: '② Operations set',      value: workingCases.filter(c => ops[c.id]?.operation !== 'No Change' && ops[c.id]?.include !== false).length + ' / ' + includedCount },
+          { label: '① Cases included',     value: `${includedCount} / ${cases.length}` },
+          { label: '② Modified cases',     value: `${modifiedCount} / ${includedCount}` },
           { label: '③ Scenario readiness',  value: '—' },
         ].map(tile => (
           <div key={tile.label} style={{ flex: '1 1 140px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '0.75rem 1rem' }}>
@@ -130,21 +146,29 @@ export default function BuildScenario() {
       </div>
 
       {/* Case configuration table */}
-      <h3 style={{ marginBottom: '0.5rem' }}>Case Configuration</h3>
+      <h3 style={{ marginBottom: '0.5rem' }}>Shortlisted cases ({workingCases.length})</h3>
       <p className="text-small text-muted" style={{ marginBottom: '0.75rem' }}>
-        Set Include, Operation, and input parameters for each case. Reference column shows {screenMetric || '—'} {screenYear}.
+        Untick Include to exclude a case from the scenario. Remove restores its reference profile and includes it in the scenario.
+        Reference column shows {screenMetric || '—'} {screenYear}.
       </p>
 
       <div style={{ overflowX: 'auto', marginBottom: '1.25rem' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <table aria-label="Shortlisted cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ background: 'var(--color-surface)', borderBottom: '2px solid var(--color-border-strong)' }}>
-              {['Include', 'ID', 'Case Name', 'Region', 'Plan Type', 'Reference', 'Operation', 'Input 1', 'Input 2', 'Input 3'].map(h => (
+              {['Include', 'ID', 'Case Name', 'Region', 'Plan Type', 'Reference', 'Operation', 'Input 1', 'Input 2', 'Input 3', 'Shortlist'].map(h => (
                 <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
+            {workingCases.length === 0 && (
+              <tr>
+                <td colSpan={11} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                  <span role="status">No cases shortlisted. All cases will use their reference profiles. Add cases below to adjust assumptions, exclude them, or review them.</span>
+                </td>
+              </tr>
+            )}
             {workingCases.map(c => {
               const cs = ops[c.id] ?? { include: true, operation: 'No Change', params: [0,0,0,0,0] }
               const ref = getRef(c.case)
@@ -152,6 +176,7 @@ export default function BuildScenario() {
                 <tr key={c.id} style={{ borderBottom: '1px solid var(--color-border)', background: cs.include ? 'transparent' : 'var(--color-surface)' }}>
                   <td style={{ padding: '7px 10px', textAlign: 'center' }}>
                     <input type="checkbox" checked={cs.include}
+                      aria-label={`Include ${c.case_name} in scenario`}
                       onChange={e => scenario.setCaseField(c.id, 'include', e.target.checked)}
                     />
                   </td>
@@ -179,9 +204,78 @@ export default function BuildScenario() {
                       />
                     </td>
                   ))}
+                  <td style={{ padding: '7px 10px' }}>
+                    <button
+                      type="button"
+                      onClick={() => removeFromShortlist(c.id)}
+                      disabled={scenario.running}
+                      aria-label={`Remove ${c.case_name} from shortlist`}
+                      style={{ padding: '4px 8px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-accent-dark)', fontSize: 12 }}
+                    >
+                      Remove
+                    </button>
+                  </td>
                 </tr>
               )
             })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Available cases — adding/removing uses the shortlist shared with Portfolio Viewer. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        <h3 style={{ margin: 0 }}>Available cases ({availableCases.length})</h3>
+        <input
+          type="search"
+          aria-label="Search available cases"
+          placeholder="Search available cases…"
+          value={availableSearch}
+          onChange={e => setAvailableSearch(e.target.value)}
+          style={{ padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 4, fontSize: 12, width: 220, maxWidth: '100%' }}
+        />
+      </div>
+      <p className="text-small text-muted" style={{ marginBottom: '0.75rem' }}>
+        These cases are automatically included using their reference profiles. Add them to the shortlist to adjust assumptions, exclude them, or review them.
+        {' '}{visibleAvailableCases.length} of {availableCases.length} available cases shown.
+      </p>
+      <div style={{ overflowX: 'auto', marginBottom: '1.25rem' }}>
+        <table aria-label="Available cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: 'var(--color-surface)', borderBottom: '2px solid var(--color-border-strong)' }}>
+              {['ID', 'Case Name', 'Region', 'Country', 'Plan Type', 'Reference', 'Shortlist'].map(h => (
+                <th key={h} scope="col" style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--color-text-muted)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleAvailableCases.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                  <span role="status">{availableCases.length === 0 ? 'All cases are shortlisted.' : 'No available cases match your search.'}</span>
+                </td>
+              </tr>
+            )}
+            {visibleAvailableCases.map(c => (
+              <tr key={c.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                <td style={{ padding: '7px 10px', color: 'var(--color-text-muted)' }}>{c.id}</td>
+                <td style={{ padding: '7px 10px', fontWeight: 500, whiteSpace: 'nowrap' }}>{c.case_name}</td>
+                <td style={{ padding: '7px 10px' }}>{c.region}</td>
+                <td style={{ padding: '7px 10px' }}>{c.country}</td>
+                <td style={{ padding: '7px 10px' }}>{c.plan_type}</td>
+                <td style={{ padding: '7px 10px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(getRef(c.case))}</td>
+                <td style={{ padding: '7px 10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => addToShortlist(c.id)}
+                    disabled={scenario.running}
+                    aria-label={`Add ${c.case_name} to shortlist`}
+                    style={{ padding: '4px 8px', background: '#fff', border: '1px solid var(--color-border)', borderRadius: 4, color: 'var(--color-accent-dark)', fontSize: 12, whiteSpace: 'nowrap' }}
+                  >
+                    Add to shortlist
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -224,7 +318,7 @@ export default function BuildScenario() {
           cursor:      scenario.running || includedCount === 0 ? 'default' : 'pointer',
         }}
       >
-        {scenario.running ? 'Running…' : '▶ Run Scenario'}
+        {scenario.running ? 'Running…' : `▶ Run Scenario (${includedCount} included)`}
       </button>
     </div>
   )

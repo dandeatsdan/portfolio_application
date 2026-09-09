@@ -65,6 +65,8 @@ Use the [health endpoint](http://localhost:8000/api/health) to check that the AP
 
 Filters, shortlisted case IDs, and the latest scenario result are managed through React context. They are in-memory application state, not a saved scenario database.
 
+All loaded cases are included using their **reference profiles** by default. The shortlist identifies cases to modify, explicitly exclude, or keep handy for review. Cases in **Available cases** remain included using their reference profiles. Removing a case from the shortlist restores its reference profile and includes it in the scenario; internally, this resets inclusion to yes, operation to No Change, and all five parameters to zero. Run instructions cover all loaded cases, using overrides only for shortlisted cases; an empty shortlist runs the full unchanged portfolio. Running with every case explicitly excluded is disabled. This contract applies to React; active Streamlit behaviour is unchanged by this correction.
+
 ## Code and data
 
 | Path | Responsibility |
@@ -93,7 +95,7 @@ The React API calculates the baseline's post-tax metrics at startup, before any 
 
 Tax uses non-negative RCOP with ETR for charges and CTR for cash payments. Tax outputs have negative analytical signs; display inversion is metadata-driven. Missing/invalid RCOP tax rates block publication. As in the Excel source, cash-flow rows without matching RCOP use zero cash tax with diagnostics. Representative tax rates are examples, not production fiscal assumptions.
 
-The scenario reference includes all loaded cases, so differences may reflect both operations and omitted cases. Invalid runs return diagnostics without partial results; React retains the previous successful result and labels it after a failed attempt. State remains in memory. There is still no price operation, and the active Streamlit UI is not wired to the new financial coordinator in this change.
+The scenario reference includes all loaded cases, so differences may reflect both operations and explicitly excluded cases. Invalid runs return diagnostics without partial results; React retains the previous successful result and labels it after a failed attempt. State remains in memory. There is still no price operation, and the active Streamlit UI is not wired to the new financial coordinator in this change.
 
 ## Verification and deployment status
 

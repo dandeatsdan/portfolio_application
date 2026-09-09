@@ -415,10 +415,13 @@ Preserve this established journey unless a redesign is requested. Separate Data,
 
 For UI work, inspect the relevant Horizon X design reference and the application's existing components and theme. Preserve established layout and business-facing terminology; do not add technical implementation detail to user-facing screens without a user need. Keep analytical logic out of widget callbacks and React components.
 
+### Confirmed React shortlist behaviour
+
+All loaded cases are included with `NoChange` by default. The user confirmed that the shortlist identifies cases for modification, exclusion, or visibility; it does not define the scenario population. React builds instructions from all loaded cases and applies configuration overrides only to shortlisted IDs. Available cases remain included with `NoChange` and zero parameters. Removing a case from the shortlist resets inclusion to true, operation to `NoChange`, and all five parameters to zero. An empty shortlist can run the full unchanged portfolio; running with every case explicitly excluded remains disabled. In instructional UI text, explain this as using or restoring a case's **reference profile**, rather than using the operation name.
+
 ### Scope and state issues to inspect before changing scenario behaviour
 
-- Streamlit displays shortlisted `working_cl`, but initialises all cases as included and builds run instructions from the full `case_listing`. Hidden cases can remain included. Align the displayed count, instruction IDs, and intended reference/scenario population when fixing this.
-- React passes `workingCases` to its run hook. Do not assume selection semantics are already equivalent between interfaces.
+- Active Streamlit behaviour is unchanged by this React correction: it displays shortlisted `working_cl`, initialises all cases as included, and builds run instructions from the full `case_listing`. Do not assume all shortlist/reset behaviour is equivalent between interfaces.
 - Both paths build a reference run from the full case listing. Make the comparison population explicit.
 - Active Streamlit fixes scenario ID to 1; React currently submits one scenario with default ID 1. The shared loop's ability to process multiple IDs is not end-to-end S1–S5 support.
 - React stores scenario configuration in page-local hook state, while shortlist, filters, and the latest result use shared context. Inspect component lifetime before promising configuration persistence across navigation.

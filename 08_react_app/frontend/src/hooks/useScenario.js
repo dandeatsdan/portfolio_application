@@ -5,29 +5,11 @@
  */
 import { useState, useCallback } from 'react'
 import { runScenario } from '../api/client'
+import { buildScenarioInstructions, defaultCase } from './scenarioInstructions'
 
-const OPERATION_MAP = {
-  'No Change':           'NoChange',
-  'Delay':               'Delay',
-  'Accelerate':          'Accelerate',
-  'Farm In (Increase)':  'Increase',
-  'Farm Down (Dilution)':'Dilution',
-  'Truncate Before':     'TruncateBefore',
-  'Truncate After':      'TruncateAfter',
-  'Production Change %': 'ProdnAdj',
-  'OPEX Change %':       'CostAdjOpex',
-  'CAPEX Change %':      'CostAdjCapex',
-  'CAPEX Change $m':     'CapexAbsolute',
-  'OPEX Change $m':      'OpexAbsolute',
-}
+export { OPERATION_LABELS } from './scenarioInstructions'
 
-export const OPERATION_LABELS = Object.keys(OPERATION_MAP)
-
-function defaultCase() {
-  return { include: true, operation: 'No Change', params: [0, 0, 0, 0, 0] }
-}
-
-export function useScenario(cases) {
+export function useScenario(cases, shortlistIds) {
   const [name,        setName]        = useState('Scenario 1')
   const [description, setDescription] = useState('')
   const [rationale,   setRationale]   = useState('')
@@ -56,6 +38,10 @@ export function useScenario(cases) {
     }))
   }, [])
 
+  const resetCase = useCallback((id) => {
+    setCaseConfig(prev => ({ ...prev, [id]: defaultCase() }))
+  }, [])
+
   const setParam = useCallback((id, index, value) => {
     setCaseConfig(prev => {
       const cs = prev[id] ?? defaultCase()
@@ -65,27 +51,16 @@ export function useScenario(cases) {
     })
   }, [])
 
-  const run = useCallback(async (allCases) => {
+  const instructions = buildScenarioInstructions(cases, shortlistIds, caseConfig)
+  const includedCount = instructions.filter(instruction => instruction.include).length
+  const modifiedCount = instructions.filter(instruction => instruction.include && instruction.operation !== 'NoChange').length
+
+  const run = useCallback(async () => {
+    if (includedCount === 0) return
     setRunning(true)
     setRunError(null)
     setDiagnostics([])
     try {
-      const instructions = allCases
-        .filter(c => (caseConfig[c.id] ?? defaultCase()).include)
-        .map(c => {
-          const cs = caseConfig[c.id] ?? defaultCase()
-          return {
-            id:        c.id,
-            case:      c.case,
-            include:   cs.include,
-            operation: OPERATION_MAP[cs.operation] ?? 'NoChange',
-            param1:    cs.params[0] ?? 0,
-            param2:    cs.params[1] ?? 0,
-            param3:    cs.params[2] ?? 0,
-            param4:    cs.params[3] ?? 0,
-            param5:    cs.params[4] ?? 0,
-          }
-        })
       const data = await runScenario({ scenario_name: name, scenario_description: description, rationale, instructions })
       if (!data.valid) throw new Error('Scenario did not produce a valid result.')
       setResult(data)
@@ -95,13 +70,14 @@ export function useScenario(cases) {
     } finally {
       setRunning(false)
     }
-  }, [name, description, rationale, caseConfig])
+  }, [name, description, rationale, instructions, includedCount])
 
   return {
     name, setName,
     description, setDescription,
     rationale, setRationale,
-    caseConfig, initCases, setCaseField, setParam,
+    caseConfig, initCases, setCaseField, setParam, resetCase,
+    includedCount, modifiedCount,
     running, run,
     result, runError, diagnostics,
   }
