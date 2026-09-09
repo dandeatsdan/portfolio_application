@@ -86,3 +86,8 @@ export const getKpiDelta  = (payload) => api.post('/api/scenario/kpi-delta', pay
 export const getScenarioValuation = (payload) => api.post('/api/scenario/valuation', payload)
 
 export default api
+
+export const getReferenceMeasure = (metric, period) =>
+  api.get('/api/portfolio/reference_measure', {
+    params: { metric, year_from: period.from, year_to: period.to, average: period.average ?? false },
+  })

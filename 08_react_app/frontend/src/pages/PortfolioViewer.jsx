@@ -12,6 +12,7 @@ import { usePortfolio } from '../hooks/usePortfolio'
 import {
   getPortfolioKpis, getStacked, getRanked, getCreaming, getEntitySummary,
 } from '../api/client'
+import Select from '../components/Select'
 import KpiCard from '../components/KpiCard'
 import FilterRail from '../components/FilterRail'
 import { SelectionContext, SidePanelContext, FiltersContext } from '../App'
@@ -83,24 +84,6 @@ function seriesColour(name, i) {
 
 // ─── shared sub-components ───────────────────────────────────────────────────
 
-function Select({ value, onChange, options, style = {} }) {
-  return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      style={{
-        fontSize: 12, padding: '3px 6px',
-        border: '1px solid var(--color-border)',
-        borderRadius: 4, background: '#fff',
-        color: 'var(--color-text)', cursor: 'pointer', ...style,
-      }}
-    >
-      {options.map(o => (
-        <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>
-      ))}
-    </select>
-  )
-}
 
 function ViewToggle({ value, onChange }) {
   return (

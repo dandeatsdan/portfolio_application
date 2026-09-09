@@ -295,3 +295,34 @@ def get_entity_summary(
         FCF_METRIC:   "FCF",
     })
     return _safe_records(summary.sort_values("Case Name"))
+
+
+@router.get("/reference_measure")
+def get_reference_measure(
+    metric: str = Query(...),
+    year_from: int = Query(default=2026),
+    year_to: int = Query(default=2040),
+    average: bool = Query(default=False),
+):
+    """Reference values keyed by stable case ID; preserve analytical signs.
+
+    Production totals use the same mmboe conversion as entity_summary.
+    Annual/average production retains the source daily-rate units.
+    NPV reuses fixed-origin valuation at the Portfolio Viewer default rate.
+    """
+    profs = _filter_profiles(app_state.profiles, app_state.case_listing, year_from, year_to)
+    if metric == NPV_METRIC:
+        if average:
+            raise HTTPException(422, "NPV supports a period total, not an annual average.")
+        values = npv_by_case(profs, 8.0, year_from, year_to).rename(columns={"NPV": "value"})
+    else:
+        if metric not in app_state.profiles["Metric"].unique():
+            raise HTTPException(422, "Unknown reference metric.")
+        values = (profs.loc[profs["Metric"] == metric]
+                  .groupby("ID")["Value"].sum(min_count=1).reset_index(name="value"))
+        if average:
+            values["value"] /= year_to - year_from + 1
+        elif metric == "Total Production (mboed)" and year_to > year_from:
+            values["value"] *= 0.36525
+    result = app_state.case_listing[["ID"]].merge(values, on="ID", how="left")
+    return _safe_records(result.rename(columns={"ID": "id"}))
