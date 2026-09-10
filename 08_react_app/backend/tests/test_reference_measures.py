@@ -20,7 +20,8 @@ def test_reference_matches_case_summary(client, metric, column):
         assert response.status_code == 200, response.text
         values = {row['id']: row['value'] for row in response.json()}
         for row in summary:
-            assert values[row['ID']] == pytest.approx(row[column])
+            expected = None if row[column] is None else row[column] * (-1 if metric in app_state.invert_metrics else 1)
+            assert values[row['ID']] == pytest.approx(expected)
     pd.testing.assert_frame_equal(before, app_state.profiles)
 
 @pytest.mark.parametrize('metric', ['Total Production (mboed)', 'Cash Capex', 'Post-Tax RCOP', 'Post-Tax Cash Flow'])
@@ -32,7 +33,7 @@ def test_annual_and_five_year_average_match_existing_totals(client, metric):
         assert response.status_code == 200
         values = {r['id']: r['value'] for r in response.json()}
         for case in cases:
-            assert values[case['id']] == pytest.approx(totals[case['case']][column])
+            assert values[case['id']] == pytest.approx(totals[case['case']][column] * (-1 if metric in app_state.invert_metrics else 1))
 
 def test_duplicate_display_names_and_missing_metric(client, monkeypatch):
     listing = app_state.case_listing.copy()

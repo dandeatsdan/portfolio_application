@@ -92,3 +92,16 @@ test('running waits for a successful save; failed saves never execute', async ()
   await assert.rejects(saveBeforeRun(async () => { throw Error('Storage unavailable') }, async () => calls.push('unexpected')))
   assert.deepEqual(calls, ['run'])
 })
+
+test('deleting the saved working scenario keeps edits and makes the next save create a new record', async () => {
+  const state = scenarioReducer(initialScenario(), { type: 'load', saved: record() })
+  const detached = scenarioReducer(state, { type: 'deleted', id: state.savedId })
+  assert.deepEqual(serializeScenario(detached), serializeScenario(state))
+  assert.equal(detached.savedId, null)
+  assert.equal(isDirty(detached), true)
+  assert.equal(scenarioReducer(state, { type: 'deleted', id: 'another-id' }), state)
+  let created = false
+  await persistScenario(detached, { create: async definition => { created = true; return { ...definition, scenario_id: 'new-id', updated_at: 'now' } }, update: () => assert.fail('must not update deleted record') })
+  assert.equal(created, true)
+  assert.equal(scenarioReducer(detached, { type: 'saved', epoch: state.epoch, saved: record(), definition: serializeScenario(state) }), detached)
+})

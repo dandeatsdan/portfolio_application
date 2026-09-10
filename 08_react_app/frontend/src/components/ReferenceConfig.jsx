@@ -47,7 +47,7 @@ export default function ReferenceConfig({ open, references, metricOptions, onApp
       <div className="reference-config__header">
         <div>
           <h2>Reference columns</h2>
-          <p>Select a metric and period for each reference column. Changes apply when you click Apply.</p>
+          <p>Select a metric and period for each reference column. The filter pane year range also applies. Changes apply when you click Apply.</p>
         </div>
         <button type="button" className="reference-config__close" onClick={onClose} aria-label="Close">
           <X size={16} />

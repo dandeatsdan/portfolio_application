@@ -66,52 +66,32 @@ def scenario_kpi_delta(
     return result
 
 
-def build_waterfall(
-    baseline: pd.DataFrame,
-    scenario: pd.DataFrame,
-    case_listing: pd.DataFrame,
-    metric: str,
-    years: list[int] | None = None,
-) -> pd.DataFrame:
-    """
-    Build waterfall chart data for a single metric.
+BREAKDOWN_COLUMNS = {
+    "plan_type": "Plan Type", "group_entity": "Group Entity", "region": "Region",
+    "country": "Country", "case_name": "Case Name",
+}
 
-    Returns a DataFrame with columns [Label, Value, Type].
-    Type is one of: "absolute" (reference/scenario totals), "relative" (per-case delta).
 
-    The ordering is:
-      Reference total → sorted case deltas (largest pos first, then neg) → Scenario total
-    """
-    ids = set(case_listing["ID"].tolist())
-
-    b = baseline[(baseline["Metric"] == metric) & (baseline["ID"].isin(ids))].copy()
-    s = scenario[(scenario["Metric"] == metric) & (scenario["ID"].isin(ids))].copy()
-
-    if years:
-        b = b[b["Year"].isin(years)]
-        s = s[s["Year"].isin(years)]
-
-    b = b.merge(case_listing[["ID", "Case Name"]], on="ID", how="left")
-    s = s.merge(case_listing[["ID", "Case Name"]], on="ID", how="left")
-
-    b_total = float(b["Value"].sum())
-    s_total = float(s["Value"].sum())
-
-    # Per-case delta
-    b_case = b.groupby("Case Name")["Value"].sum().rename("Baseline")
-    s_case = s.groupby("Case Name")["Value"].sum().rename("Scenario")
-    case_delta = (
-        pd.concat([b_case, s_case], axis=1)
-        .fillna(0.0)
-        .assign(Delta=lambda d: d["Scenario"] - d["Baseline"])
-        .reset_index()
-        .sort_values("Delta", ascending=False)
-    )
-
-    rows = [{"Label": "Reference", "Value": b_total, "Type": "absolute"}]
-    for _, r in case_delta.iterrows():
-        if abs(r["Delta"]) > 1e-9:
-            rows.append({"Label": r["Case Name"], "Value": r["Delta"], "Type": "relative"})
-    rows.append({"Label": "Scenario", "Value": s_total, "Type": "absolute"})
-
+def build_waterfall(baseline, scenario, case_listing, metric, years=None, group_by="case_name"):
+    """Analytical signs; group by stable IDs for Case, never by ambiguous labels."""
+    if group_by not in BREAKDOWN_COLUMNS:
+        raise ValueError("Unsupported waterfall breakdown")
+    column = BREAKDOWN_COLUMNS[group_by]
+    listing = case_listing[["ID", column]].copy()
+    listing[column] = listing[column].fillna("Unassigned")
+    if group_by == "case_name":
+        duplicate = listing[column].duplicated(keep=False)
+        listing.loc[duplicate, column] += " (" + listing.loc[duplicate, "ID"].astype(str) + ")"
+    def aggregate(frame):
+        rows = frame.loc[frame.Metric == metric]
+        if years is not None:
+            rows = rows.loc[rows.Year.isin(years)]
+        rows = rows.merge(listing, on="ID", how="inner", validate="many_to_one")
+        return rows.groupby(column, dropna=False).Value.sum()
+    b, s = aggregate(baseline), aggregate(scenario)
+    deltas = s.subtract(b, fill_value=0).sort_values(ascending=False)
+    rows = [{"Label": "Reference", "Value": float(b.sum()), "Type": "absolute"}]
+    rows += [{"Label": str(label), "Value": float(value), "Type": "relative"}
+             for label, value in deltas.items() if value != 0]
+    rows.append({"Label": "Scenario", "Value": float(s.sum()), "Type": "absolute"})
     return pd.DataFrame(rows)

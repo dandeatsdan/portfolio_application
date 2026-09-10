@@ -7,6 +7,7 @@ import logging
 import pandas as pd
 import numpy as np
 from ..state import app_state
+from ..utils.display import to_display
 from ..schemas import ScenarioRunRequest, ScenarioRunResponse, WaterfallRequest, ValuationRequest
 from scenario_modeller.services.scenario_service import execute_scenario
 from scenario_modeller.services.valuation_service import npv_by_case, valuation_basis
@@ -46,6 +47,8 @@ def run_scenario_endpoint(request: ScenarioRunRequest):
             "Param5":   inst.param5,
         })
     instructions_df = pd.DataFrame(instructions_rows)
+    if not instructions_df.empty:
+        instructions_df["Case"] = instructions_df["ID"].map(app_state.case_listing.set_index("ID")["Case"])
 
     try:
         run = execute_scenario(app_state.raw_profiles, instructions_df,
@@ -89,7 +92,7 @@ def run_scenario_endpoint(request: ScenarioRunRequest):
         "rationale": request.rationale,
         "valuation": valuation_basis(),
         "diagnostics": warnings + run.diagnostics + app_state.baseline_diagnostics,
-        "instructions": run.instructions.rename(columns={
+        "instructions": pd.concat([run.instructions, instructions_df.loc[~instructions_df["Include"]]], ignore_index=True).rename(columns={
             "ID": "id", "Case": "case", "Include": "include", "Operation": "operation",
             **{f"Param{i}": f"param{i}" for i in range(1, 6)},
         }).to_dict("records"),
@@ -110,8 +113,8 @@ def waterfall_endpoint(request: WaterfallRequest):
     scenario_df = scenario_df.rename(columns={"id": "ID", "case": "Case", "metric": "Metric", "year": "Year", "value": "Value"})
 
     wf = build_waterfall(
-        baseline_df, scenario_df, app_state.case_listing,
-        request.metric, request.years
+        to_display(baseline_df, app_state.invert_metrics), to_display(scenario_df, app_state.invert_metrics), app_state.case_listing,
+        request.metric, request.years, request.group_by
     )
     return wf.rename(columns={"Label": "label", "Value": "value", "Type": "type"}).to_dict(orient="records")
 

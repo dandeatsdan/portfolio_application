@@ -54,3 +54,10 @@
   .home-destinations { grid-template-columns: 1fr; }
   .home-destination__secondary:empty { display: none; }
 }
+
+.saved-scenarios__row { display: flex; align-items: stretch; gap: 8px; }
+.saved-scenarios__row .saved-scenarios__item { flex: 1; min-width: 0; }
+.saved-scenarios__delete { display: inline-flex; align-items: center; justify-content: center; padding: 10px; background: var(--color-canvas); border: 1px solid var(--color-border); border-radius: var(--radius); color: var(--color-text-muted); cursor: pointer; }
+.saved-scenarios__delete:hover { background: var(--color-surface); color: var(--color-negative); }
+.saved-scenarios__delete:focus-visible { outline: 2px solid var(--color-accent-dark); outline-offset: 2px; }
+.saved-scenarios__delete:disabled { opacity: .5; cursor: default; }

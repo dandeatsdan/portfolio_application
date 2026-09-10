@@ -99,3 +99,5 @@ export const getSavedScenario = id => api.get(`/api/scenarios/${encodeURICompone
 export const createSavedScenario = definition => api.post('/api/scenarios', definition)
 export const updateSavedScenario = (id, definition) => api.put(`/api/scenarios/${encodeURIComponent(id)}`, definition)
 export const deleteSavedScenario = id => api.delete(`/api/scenarios/${encodeURIComponent(id)}`)
+
+export const getResultsAnalysis = payload => api.post('/api/scenario/analysis', payload)

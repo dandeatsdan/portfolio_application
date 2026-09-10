@@ -5,6 +5,7 @@ These define the shape of data returned to the React frontend.
 """
 
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 
 class CaseRow(BaseModel):
@@ -112,6 +113,7 @@ class ScenarioRunResponse(BaseModel):
 
 
 class WaterfallRequest(BaseModel):
+    group_by: Literal["case_name", "region", "country", "group_entity", "plan_type"] = "case_name"
     baseline: list[ProfileRow]
     scenario: list[ProfileRow]
     metric: str

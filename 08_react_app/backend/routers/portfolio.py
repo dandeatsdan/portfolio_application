@@ -304,7 +304,7 @@ def get_reference_measure(
     year_to: int = Query(default=2040),
     average: bool = Query(default=False),
 ):
-    """Reference values keyed by stable case ID; preserve analytical signs.
+    """Reference values keyed by stable case ID, with presentation signs from the metrics helper.
 
     Production totals use the same mmboe conversion as entity_summary.
     Annual/average production retains the source daily-rate units.
@@ -318,7 +318,8 @@ def get_reference_measure(
     else:
         if metric not in app_state.profiles["Metric"].unique():
             raise HTTPException(422, "Unknown reference metric.")
-        values = (profs.loc[profs["Metric"] == metric]
+        display_profiles = to_display(profs, app_state.invert_metrics)
+        values = (display_profiles.loc[display_profiles["Metric"] == metric]
                   .groupby("ID")["Value"].sum(min_count=1).reset_index(name="value"))
         if average:
             values["value"] /= year_to - year_from + 1

@@ -1,11 +1,11 @@
-import { useState, useEffect, useContext, useRef } from 'react'
+import { useState, useEffect, useContext, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CircleHelp, Pencil, SlidersHorizontal } from 'lucide-react'
 import { usePortfolio } from '../hooks/usePortfolio'
 import { useScenario } from '../hooks/useScenario'
 import Select from '../components/Select'
 import { useReferenceMeasures } from '../hooks/useReferenceMeasures'
-import { DEFAULT_REFERENCES, REFERENCE_KEYS, referenceLabel, metricDisplayName } from './referenceMeasures'
+import { DEFAULT_REFERENCES, REFERENCE_KEYS, REFERENCE_PERIODS, filteredReferencePeriod, referenceLabel, metricDisplayName } from './referenceMeasures'
 import { SelectionContext, ScenarioResultContext, SidePanelContext, FiltersContext } from '../App'
 import FilterRail from '../components/FilterRail'
 import { filterScenarioCases } from './scenarioCaseFilters'
@@ -69,7 +69,7 @@ export default function BuildScenario() {
   const { filters, setFilters } = useContext(FiltersContext)
 
   useEffect(() => {
-    setSidePanel(<FilterRail filters={filters} onChange={setFilters} showYearRange={false} />)
+    setSidePanel(<FilterRail filters={filters} onChange={setFilters} />)
     return () => setSidePanel(null)
   }, [filters, cases, setSidePanel, setFilters])
 
@@ -116,7 +116,7 @@ export default function BuildScenario() {
       if (mounted.current && latestWorking.current.epoch === snapshot.epoch) {
         setLoadErrors([])
         navigate(`/build?scenario=${action.saved.scenario_id}`, { replace: true })
-        return true
+        return action.saved.scenario_id
       }
       return false
     } catch (err) {
@@ -143,8 +143,11 @@ export default function BuildScenario() {
 
 
   const [references, setReferences] = useState(DEFAULT_REFERENCES)
-  const referenceData = useReferenceMeasures(references)
-  const referenceColumns = references.map((ref, index) => ({ key: REFERENCE_KEYS[index], label: metricDisplayName(ref.metric), title: referenceLabel(ref), numeric: true }))
+  const displayedReferences = useMemo(() => references.map(ref => ({ ...ref,
+    timeframe: filteredReferencePeriod(REFERENCE_PERIODS.find(p => p.value === ref.period), filters.yearFrom, filters.yearTo),
+  })), [references, filters.yearFrom, filters.yearTo])
+  const referenceData = useReferenceMeasures(displayedReferences)
+  const referenceColumns = displayedReferences.map((ref, index) => ({ key: REFERENCE_KEYS[index], label: metricDisplayName(ref.metric), title: referenceLabel(ref), numeric: true }))
   const columns = SCENARIO_CASE_COLUMNS.filter(column => !REFERENCE_KEYS.includes(column.key)).concat(referenceColumns)
   const shortlistColumns = columns
   const metricOptions = [...new Set([...DEFAULT_REFERENCES.map(ref => ref.metric), ...metrics])]
@@ -255,26 +258,16 @@ export default function BuildScenario() {
             All cases start included using their reference profiles; removing a case from the shortlist restores this default.
           </p>
         </div>
-        <div style={{ display: 'grid', gap: 6 }}>
-        <button
-          type="button"
-          onClick={() => setConfirmRunOpen(true)}
-          aria-haspopup="dialog"
-          disabled={scenario.running || saving || includedCount === 0 || missingIds.length > 0}
-          style={{
-            padding: '0.7rem 1.6rem',
-            background: scenario.running || includedCount === 0 ? 'var(--color-border)' : 'var(--color-accent-dark)',
-            color: '#fff', border: 'none', borderRadius: 4,
-            fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap',
-            cursor: scenario.running || includedCount === 0 ? 'default' : 'pointer',
-          }}
-        >
-          {saving ? 'Saving…' : scenario.running ? 'Running…' : '▶ Save and run'}
-        </button>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
           <button type="button" className="saved-scenarios__trigger" onClick={() => save()} disabled={saving || scenario.running}>Save</button>
           <button type="button" className="saved-scenarios__trigger" aria-haspopup="dialog" disabled={saving || scenario.running} onClick={() => setSavedOpen(true)}>Saved scenarios</button>
-        </div>
+        <button type="button" className="saved-scenarios__trigger" disabled={saving || scenario.running} onClick={newScenario}>Clear scenario</button>
+        <button type="button" className="saved-scenarios__trigger"
+          onClick={() => setConfirmRunOpen(true)} aria-haspopup="dialog"
+          disabled={scenario.running || saving || includedCount === 0 || missingIds.length > 0}
+          style={{ background: 'var(--color-accent-dark)', color: '#fff' }}>
+          {saving ? 'Saving…' : scenario.running ? 'Running…' : 'Save and run'}
+        </button>
         </div>
       </div>
 

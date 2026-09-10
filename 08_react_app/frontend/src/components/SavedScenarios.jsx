@@ -1,11 +1,37 @@
-import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, FolderOpen, X } from 'lucide-react'
-import { listSavedScenarios } from '../api/client'
+import { useContext, useEffect, useRef, useState } from 'react'
+import { ArrowRight, FolderOpen, Trash2, X } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { WorkingScenarioContext } from '../hooks/WorkingScenarioContext'
+import { deleteSavedScenario, listSavedScenarios } from '../api/client'
 import './OperationsGuide.css'
 import './SavedScenarios.css'
 
 export default function SavedScenarios({ onClose, onOpen, onNew }) {
   const dialogRef = useRef(null)
+  const workingContext = useContext(WorkingScenarioContext)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const deleteLock = useRef(false)
+  const [deleting, setDeleting] = useState(null)
+  const [deleteError, setDeleteError] = useState(null)
+  async function remove(item) {
+    if (deleteLock.current || !window.confirm(`Delete saved scenario "${item.name}"? This cannot be undone. Your working copy will be kept.`)) return
+    deleteLock.current = true
+    setDeleting(item.scenario_id)
+    setDeleteError(null)
+    try {
+      await deleteSavedScenario(item.scenario_id)
+      setSaved(data => ({ ...data, scenarios: data.scenarios.filter(s => s.scenario_id !== item.scenario_id) }))
+      workingContext?.dispatch({ type: 'deleted', id: item.scenario_id })
+      const params = new URLSearchParams(location.search)
+      if (location.pathname === '/build' && params.get('scenario') === item.scenario_id) {
+        params.delete('scenario')
+        navigate({ pathname: location.pathname, search: params.toString() }, { replace: true })
+      }
+      dialogRef.current?.querySelector('.operations-guide__close')?.focus()
+    } catch (err) { setDeleteError(`Unable to delete ${item.name}: ${err.message}`) }
+    finally { deleteLock.current = false; setDeleting(null) }
+  }
   const [saved, setSaved] = useState(null)
   const [error, setError] = useState(null)
   const [retry, setRetry] = useState(0)
@@ -57,6 +83,8 @@ export default function SavedScenarios({ onClose, onOpen, onNew }) {
     <div className="operations-guide__content">
       {!saved && !error && <p role="status">Loading saved scenarios…</p>}
       {error && <div role="alert"><p>{error}</p><button className="saved-scenarios__action" onClick={() => setRetry(value => value + 1)}>Retry</button></div>}
+      {deleteError && <p role="alert">{deleteError}</p>}
+      {deleting && <p role="status">Deleting saved scenario…</p>}
       {saved?.errors.map((message, index) => <p key={index} role="alert">{message}</p>)}
       {saved?.scenarios.length === 0 && <div className="saved-scenarios__empty">
         <FolderOpen size={32} aria-hidden="true" /><h3>No saved scenarios yet</h3>
@@ -64,14 +92,15 @@ export default function SavedScenarios({ onClose, onOpen, onNew }) {
       </div>}
       {saved?.scenarios.length > 0 && <>
         <p className="saved-scenarios__count">{saved.scenarios.length} saved {saved.scenarios.length === 1 ? 'scenario' : 'scenarios'}</p>
-        <ul className="saved-scenarios__list">{saved.scenarios.map(item => <li key={item.scenario_id}>
-          <button type="button" className="saved-scenarios__item" aria-label={`Open ${item.name}`} onClick={() => onOpen(item.scenario_id)}>
+        <ul className="saved-scenarios__list">{saved.scenarios.map(item => <li key={item.scenario_id} className="saved-scenarios__row">
+          <button type="button" className="saved-scenarios__item" disabled={deleting !== null} aria-label={`Open ${item.name}`} onClick={() => onOpen(item.scenario_id)}>
             <FolderOpen size={20} aria-hidden="true" />
             <span className="saved-scenarios__details"><strong>{item.name}</strong>
               <span>Modified <time dateTime={item.updated_at}>{new Date(item.updated_at).toLocaleString()}</time></span>
             </span>
             <ArrowRight size={18} aria-hidden="true" />
           </button>
+          <button type="button" className="saved-scenarios__delete" disabled={deleting !== null} title={`Delete ${item.name}`} aria-label={`Delete ${item.name}`} onClick={() => remove(item)}><Trash2 size={18} aria-hidden="true" /></button>
         </li>)}</ul>
       </>}
     </div>

@@ -20,3 +20,17 @@ for (const key of REFERENCE_KEYS) test(`${key} sorts raw numbers, stable ties an
   assert.deepEqual(sortScenarioCases(rows, { key, direction: 'descending' }).map(r => r.id), [0, 3, 2, 1])
   assert.deepEqual(rows.map(r => r.id), [0, 1, 2, 3])
 })
+
+
+test('time slicer intersects reference periods and identifies periods outside its range', async () => {
+  const { filteredReferencePeriod, referenceLabel } = await import('./referenceMeasures.js')
+  const full = { from: 2026, to: 2040 }
+  const timeframe = filteredReferencePeriod(full, 2028, 2032)
+  assert.equal(timeframe.from, 2028)
+  assert.equal(timeframe.to, 2032)
+  assert.match(referenceLabel({ metric: 'Cash Capex', period: 'full', timeframe }), /2028–2032/)
+  assert.equal(filteredReferencePeriod({ from: 2026, to: 2030, average: true }, 2031, 2035).empty, true)
+  const average = filteredReferencePeriod({ from: 2026, to: 2030, average: true }, 2028, 2035)
+  assert.equal(average.average, true)
+  assert.equal(average.to, 2030)
+})

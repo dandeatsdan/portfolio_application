@@ -22,8 +22,8 @@ export function metricDisplayName(metric) {
   return METRIC_DISPLAY_NAMES[metric] ?? metric
 }
 
-export function referenceLabel({ metric, period }) {
-  const timeframe = REFERENCE_PERIODS.find(p => p.value === period)
+export function referenceLabel({ metric, period, timeframe: selectedTimeframe }) {
+  const timeframe = selectedTimeframe ?? REFERENCE_PERIODS.find(p => p.value === period)
   const name = metric === PRODUCTION_METRIC
     ? `Production (${timeframe.from !== timeframe.to && !timeframe.average ? 'mmboe' : 'mboed'})`
     : metric === NPV_METRIC ? 'Post-tax NPV at 8% ($m)' : metricDisplayName(metric)
@@ -35,4 +35,12 @@ export function updateReference(reference, field, value) {
   // NPV is the discounted sum for the selected period, never an average.
   if (next.metric === NPV_METRIC && next.period === 'average') next.period = 'five'
   return next
+}
+
+export function filteredReferencePeriod(period, yearFrom, yearTo) {
+  const from = Math.max(period.from, yearFrom)
+  const to = Math.min(period.to, yearTo)
+  const empty = from > to
+  return { ...period, from, to, empty,
+    label: empty ? 'Outside selected years' : `${period.average ? 'Average' : 'Total'} ${from === to ? from : `${from}–${to}`}` }
 }

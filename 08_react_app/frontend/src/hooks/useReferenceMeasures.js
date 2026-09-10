@@ -8,8 +8,10 @@ export function useReferenceMeasures(references) {
   useEffect(() => {
     let active = true
     setResult(null)
-    Promise.all(references.map(ref => getReferenceMeasure(ref.metric,
-      REFERENCE_PERIODS.find(period => period.value === ref.period))))
+    Promise.all(references.map(ref => {
+      const period = ref.timeframe ?? REFERENCE_PERIODS.find(period => period.value === ref.period)
+      return period.empty ? Promise.resolve([]) : getReferenceMeasure(ref.metric, period)
+    }))
       .then(rows => {
         if (active) setResult({ references, values: rows.map(group => new Map(group.map(row => [row.id, row.value]))) })
       })

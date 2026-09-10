@@ -44,7 +44,7 @@ export function useScenario(cases, shortlistIds) {
   const includedCount = instructions.filter(instruction => instruction.include).length
   const modifiedCount = instructions.filter(instruction => instruction.include && instruction.operation !== 'NoChange').length
 
-  const run = useCallback(async () => {
+  const run = useCallback(async (savedScenarioId = null) => {
     if (includedCount === 0) return
     setRunning(true)
     setRunError(null)
@@ -52,7 +52,7 @@ export function useScenario(cases, shortlistIds) {
     try {
       const data = await runScenario({ scenario_name: name, scenario_description: description, rationale, instructions })
       if (!data.valid) throw new Error('Scenario did not produce a valid result.')
-      setResult(data)
+      setResult({ ...data, savedScenarioId })
     } catch (err) {
       setRunError(err.message)
       setDiagnostics(err.diagnostics ?? [])

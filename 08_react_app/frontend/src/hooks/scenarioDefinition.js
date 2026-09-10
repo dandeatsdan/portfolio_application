@@ -34,6 +34,7 @@ export function hydrateScenario(saved) {
 export function scenarioReducer(state, action) {
   switch (action.type) {
     case 'load': return { ...hydrateScenario(action.saved), epoch: state.epoch + 1 }
+    case 'deleted': return state.savedId !== action.id ? state : { ...state, savedId: null, updatedAt: null, baseline: null, epoch: state.epoch + 1 }
     case 'new': return { ...initialScenario(), epoch: state.epoch + 1 }
     case 'field': return { ...state, [action.field]: action.value }
     case 'selection': {
@@ -64,7 +65,8 @@ export async function persistScenario(state, client, saveAs = false) {
 
 // A failed save must never run an unsaved configuration.
 export async function saveBeforeRun(save, run) {
-  if (!await save()) return false
-  await run()
+  const savedId = await save()
+  if (!savedId) return false
+  await run(savedId)
   return true
 }

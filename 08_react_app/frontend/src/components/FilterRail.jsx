@@ -101,7 +101,7 @@ function CheckList({ available, selected, onChange }) {
   )
 }
 
-export default function FilterRail({ filters, onChange, showYearRange = true }) {
+export default function FilterRail({ filters, onChange, showYearRange = true, periodHint = 'Filter table rows here. Set reference periods in Edit metrics.' }) {
   const [open, setOpen] = useState({ yearRange: true, planTypes: true })
   const [options, setOptions] = useState({
     plan_types: [], group_entities: [], segments: [],
@@ -166,7 +166,7 @@ export default function FilterRail({ filters, onChange, showYearRange = true }) 
         </div>
       </Section>}
 
-      {!showYearRange && <p style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>Filter table rows here. Set reference periods in Edit metrics.</p>}
+      {!showYearRange && <p style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>{periodHint}</p>}
 
       {/* Dimension filters — cascaded */}
       {DIMENSIONS.map(({ key, label, optKey }) => {

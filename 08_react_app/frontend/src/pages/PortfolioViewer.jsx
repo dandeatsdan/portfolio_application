@@ -1,10 +1,10 @@
 /**
  * Portfolio Viewer
  */
-import { useState, useEffect, useContext, useRef } from 'react'
+import { useState, useEffect, useContext } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AreaChart, Area, BarChart, Bar, LabelList,
+  AreaChart, Area, BarChart, Bar,
   ScatterChart, Scatter,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
@@ -12,7 +12,10 @@ import { usePortfolio } from '../hooks/usePortfolio'
 import {
   getPortfolioKpis, getStacked, getRanked, getCreaming, getEntitySummary,
 } from '../api/client'
-import Select from '../components/Select'
+import { SlidersHorizontal } from 'lucide-react'
+import PortfolioViewSettings from '../components/PortfolioViewSettings'
+import { metricDisplayName } from './referenceMeasures'
+import '../components/ScenarioResults.css'
 import KpiCard from '../components/KpiCard'
 import FilterRail from '../components/FilterRail'
 import { SelectionContext, SidePanelContext, FiltersContext } from '../App'
@@ -22,7 +25,7 @@ import { CASE_SUMMARY_COLUMNS, sortCaseSummaryRows } from './caseSummarySort'
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const BP_GREEN   = '#007F00'
-const PANEL_H    = 240          // fixed height for all chart/table panels
+const PANEL_H    = 240          // fixed height for chart panels
 
 const PLAN_TYPE_BADGE = {
   'Main Plan':          { bg: '#003600', text: '#fff'     },
@@ -88,8 +91,8 @@ function seriesColour(name, i) {
 function ViewToggle({ value, onChange }) {
   return (
     <div style={{ display: 'flex', border: '1px solid var(--color-border)', borderRadius: 4, overflow: 'hidden' }}>
-      {['Area', 'Columns', 'Table'].map(v => (
-        <button key={v} onClick={() => onChange(v)} style={{
+      {['Area', 'Columns'].map(v => (
+        <button key={v} aria-pressed={value === v} onClick={() => onChange(v)} style={{
           padding: '3px 8px', fontSize: 11, border: 'none', cursor: 'pointer',
           background: value === v ? bp.warmGrey5 : '#fff',
           color:      value === v ? '#fff' : 'var(--color-text)',
@@ -137,14 +140,24 @@ function ChartTableView({ data, seriesKeys }) {
   )
 }
 
-function FlexChartPanel({ metrics, defaultMetric, filters }) {
-  const [metric,  setMetric]  = useState(defaultMetric)
-  const [groupBy, setGroupBy] = useState('')
+function ChartDataDetails({ rows, columns }) {
+  return <details className="results-data"><summary>View chart data</summary>
+    <div style={{ maxHeight: 300, overflow: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      <thead><tr>{columns.map(c => <th key={c.key} scope="col" style={{ textAlign: c.numeric ? 'right' : 'left', padding: 8 }}>{c.label}</th>)}</tr></thead>
+      <tbody>{rows.map((row, i) => <tr key={i}>{columns.map(c => <td key={c.key} style={{ textAlign: c.numeric ? 'right' : 'left', padding: 8, borderBottom: '1px solid var(--color-border)' }}>{c.numeric ? fmt(row[c.key], 2) : row[c.key]}</td>)}</tr>)}</tbody>
+    </table>{rows.length === 0 && <p>No chart data for the selected filters.</p>}</div>
+  </details>
+}
+
+function FlexChartPanel({ metric, groupBy, filters }) {
   const [view,    setView]    = useState('Columns')
   const [data,    setData]    = useState([])
 
   useEffect(() => {
-    getStacked(metric, groupBy, filters).then(setData).catch(() => setData([]))
+    let active = true
+    setData([])
+    getStacked(metric, groupBy, filters).then(rows => { if (active) setData(rows) }).catch(() => { if (active) setData([]) })
+    return () => { active = false }
   }, [metric, groupBy, filters])
 
   const seriesKeys = [...new Set(data.map(r => r.Series))].sort()
@@ -158,17 +171,13 @@ function FlexChartPanel({ metrics, defaultMetric, filters }) {
   return (
     <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '0.9rem 1rem', flex: 1, minWidth: 0 }}>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-        <Select value={metric}  onChange={setMetric}  options={metrics} style={{ maxWidth: 170 }} />
-        <label style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>Break down</label>
-        <Select value={groupBy} onChange={setGroupBy} options={DIMENSION_OPTIONS} />
+        <div style={{ flex: 1 }}><h3 style={{ fontSize: 15, margin: 0 }}>{metricDisplayName(metric)}</h3>{groupBy && <small className="text-muted">Breakdown by {DIMENSION_OPTIONS.find(o => o.value === groupBy)?.label}</small>}</div>
         <ViewToggle value={view} onChange={setView} />
       </div>
 
-      {/* Fixed-height container — same for chart and table */}
+      {/* Fixed-height chart; data expands below */}
       <div style={{ height: PANEL_H, overflow: 'hidden' }}>
-        {view === 'Table' ? (
-          <ChartTableView data={data} seriesKeys={seriesKeys} />
-        ) : (
+
           <ResponsiveContainer width="100%" height="100%">
             {view === 'Area' ? (
               <AreaChart data={wideData}>
@@ -199,8 +208,8 @@ function FlexChartPanel({ metrics, defaultMetric, filters }) {
               </BarChart>
             )}
           </ResponsiveContainer>
-        )}
       </div>
+      <details className="results-data"><summary>View chart data</summary><div style={{ maxHeight: 300, overflow: 'auto' }}><ChartTableView data={data} seriesKeys={seriesKeys} /></div></details>
     </div>
   )
 }
@@ -217,17 +226,29 @@ export default function PortfolioViewer() {
 
   const [kpis,          setKpis]          = useState([])
   const [rankedData,    setRankedData]    = useState([])
-  const [rankBy,        setRankBy]        = useState('case_name')
-  const [rankMetric,    setRankMetric]    = useState('Post-Tax Cash Flow')
-  const [topN,          setTopN]          = useState('10')
   const [creamData,     setCreamData]     = useState([])
-  const [creamGroupBy,  setCreamGroupBy]  = useState('case_name')
   const [entityRows,    setEntityRows]    = useState([])
   const [entityStatus,  setEntityStatus]  = useState('loading')
   const [entityRetry,   setEntityRetry]   = useState(0)
   const [entitySearch,  setEntitySearch]  = useState('')
   const [tableSort,     setTableSort]     = useState(null)
   const [chartSelection, setChartSelection] = useState(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [viewSettings, setViewSettings] = useState({ metric1: PROD_METRIC, group1: '', metric2: 'Cash Capex', group2: '', metric3: 'Post-Tax Cash Flow', group3: '', rankBy: 'case_name', rankMetric: 'Post-Tax Cash Flow', topN: '10', creamGroupBy: 'case_name' })
+  const { rankBy, rankMetric, topN, creamGroupBy } = viewSettings
+  const settingsSections = [
+    ...[1, 2, 3].map(i => ({ title: `Chart ${i}`, fields: [
+      { key: `metric${i}`, label: 'Metric', options: metrics },
+      { key: `group${i}`, label: 'Break down', options: DIMENSION_OPTIONS },
+    ] })),
+    { title: 'Ranked contributors', fields: [
+      { key: 'rankBy', label: 'Rank by', options: RANK_BY_OPTIONS },
+      { key: 'rankMetric', label: 'Metric', options: [...metrics, { value: NPV_METRIC, label: 'NPV8 ($m)' }] },
+      { key: 'topN', label: 'Contributors', options: TOP_N_OPTIONS },
+    ] },
+    { title: 'Creaming curve', fields: [{ key: 'creamGroupBy', label: 'Group by', options: CREAM_DIM_OPTIONS }] },
+  ]
+
 
   const DIM_TO_FIELD = {
     group_entity: 'Group Entity',
@@ -260,11 +281,17 @@ export default function PortfolioViewer() {
 
   useEffect(() => {
     if (!rankMetric) return
-    getRanked(rankMetric, rankBy, Number(topN), filters, DISCOUNT_RATE).then(setRankedData).catch(() => setRankedData([]))
+    let active = true
+    setRankedData([])
+    getRanked(rankMetric, rankBy, Number(topN), filters, DISCOUNT_RATE).then(rows => { if (active) setRankedData(rows) }).catch(() => { if (active) setRankedData([]) })
+    return () => { active = false }
   }, [rankMetric, rankBy, topN, filters])
 
   useEffect(() => {
-    getCreaming(DISCOUNT_RATE, filters, creamGroupBy).then(setCreamData).catch(() => setCreamData([]))
+    let active = true
+    setCreamData([])
+    getCreaming(DISCOUNT_RATE, filters, creamGroupBy).then(rows => { if (active) setCreamData(rows) }).catch(() => { if (active) setCreamData([]) })
+    return () => { active = false }
   }, [filters, creamGroupBy])
 
   useEffect(() => {
@@ -314,12 +341,14 @@ export default function PortfolioViewer() {
   return (
     <>
       {/* ── Page header ── */}
-      <div style={{ marginBottom: '1.25rem' }}>
-        <h2 style={{ marginBottom: '0.15rem' }}>Portfolio Viewer</h2>
+      <div className="results-heading">
+        <div><h2 style={{ marginBottom: '0.15rem' }}>Portfolio Viewer</h2>
         <p style={{ color: 'var(--color-text-muted)', fontSize: 13, margin: 0 }}>
           Review portfolio shape, quality and key contributors across the selected portfolio.
-        </p>
+        </p></div>
+        <button className="saved-scenarios__trigger" aria-haspopup="dialog" onClick={() => setSettingsOpen(true)}><SlidersHorizontal size={15} /> View settings</button>
       </div>
+      {settingsOpen && <PortfolioViewSettings settings={viewSettings} sections={settingsSections} onClose={() => setSettingsOpen(false)} onApply={draft => { setViewSettings(draft); setChartSelection(null); setSettingsOpen(false) }} />}
 
       {/* ── KPI tiles ── */}
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
@@ -351,9 +380,7 @@ export default function PortfolioViewer() {
 
       {/* ── Three chart panels ── */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        <FlexChartPanel metrics={metrics} defaultMetric="Total Production (mboed)" filters={filters} />
-        <FlexChartPanel metrics={metrics} defaultMetric="Cash Capex"               filters={filters} />
-        <FlexChartPanel metrics={metrics} defaultMetric="Post-Tax Cash Flow"        filters={filters} />
+        {[1, 2, 3].map(i => <FlexChartPanel key={i} metric={viewSettings[`metric${i}`]} groupBy={viewSettings[`group${i}`]} filters={filters} />)}
       </div>
 
       {/* ── Ranked contributors + Creaming curve ── */}
@@ -361,14 +388,9 @@ export default function PortfolioViewer() {
 
         {/* Ranked contributors */}
         <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '0.9rem 1rem' }}>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>
-              Ranked Contributors
-            </span>
-            <Select value={rankBy}     onChange={v => { setRankBy(v); setChartSelection(null) }}     options={RANK_BY_OPTIONS} />
-            <Select value={rankMetric} onChange={setRankMetric} options={[...metrics, { value: NPV_METRIC, label: 'NPV8 ($m)' }]} style={{ maxWidth: 210 }} />
-            <Select value={topN}       onChange={setTopN}       options={TOP_N_OPTIONS} />
-            {rankMetric === NPV_METRIC && <span style={{ fontSize: 11 }}>Fixed 2026 base; period 1.</span>}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <h3 style={{ fontSize: 15, margin: 0 }}>Ranked Contributors</h3>
+            <div className="text-small text-muted" style={{ marginTop: 4 }}>{metricDisplayName(rankMetric)} · Breakdown by {RANK_BY_OPTIONS.find(o => o.value === rankBy)?.label} · {TOP_N_OPTIONS.find(o => o.value === topN)?.label}{rankMetric === NPV_METRIC && ' · Fixed 2026 base; period 1.'}</div>
           </div>
 
           <div style={{ overflowY: 'auto', maxHeight: 420 }}>
@@ -379,12 +401,12 @@ export default function PortfolioViewer() {
                 <div
                   key={row.Label}
                   onClick={() => selectChart(rankBy, row.Label)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, cursor: 'pointer', borderLeft: isActive ? '3px solid var(--color-accent)' : '3px solid transparent', paddingLeft: isActive ? 4 : 4 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, minHeight: 26, cursor: 'pointer', borderLeft: isActive ? '3px solid var(--color-accent)' : '3px solid transparent', paddingLeft: isActive ? 4 : 4 }}
                 >
                   <div style={{ width: 140, flexShrink: 0, fontSize: 11, color: '#494733', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: isActive ? 700 : 400 }}>
                     {row.Label}
                   </div>
-                  <div style={{ flex: 1, background: '#f0f0f0', borderRadius: 3, height: 18, minWidth: 0 }}>
+                  <div style={{ flex: 1, background: '#f0f0f0', borderRadius: 3, height: 26, minWidth: 0 }}>
                     <div style={{ width: `${pct}%`, background: isActive ? 'var(--color-accent)' : BP_GREEN, height: '100%', borderRadius: 3, transition: 'width 0.3s' }} />
                   </div>
                   <div style={{ width: 120, flexShrink: 0, fontSize: 10, color: '#494733', whiteSpace: 'nowrap' }}>
@@ -394,16 +416,14 @@ export default function PortfolioViewer() {
               )
             })}
           </div>
+          <ChartDataDetails rows={rankedData} columns={[{ key: 'Label', label: 'Contributor' }, { key: 'Total', label: metricDisplayName(rankMetric), numeric: true }, { key: 'Pct', label: 'Share (%)', numeric: true }]} />
         </div>
 
         {/* Creaming curve */}
         <div style={{ background: '#fff', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', padding: '0.9rem 1rem' }}>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Creaming Curve
-            </span>
-            <Select value={creamGroupBy} onChange={v => { setCreamGroupBy(v); setChartSelection(null) }} options={CREAM_DIM_OPTIONS} />
-            <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Discount rate: {DISCOUNT_RATE}%</span>
+          <div style={{ marginBottom: '0.4rem' }}>
+            <h3 style={{ fontSize: 15, margin: 0 }}>Creaming Curve</h3>
+            <div className="text-small text-muted" style={{ marginTop: 4 }}>Breakdown by {CREAM_DIM_OPTIONS.find(o => o.value === creamGroupBy)?.label} · Discount rate: {DISCOUNT_RATE}%</div>
           </div>
           <p style={{ fontSize: 11, color: 'var(--color-text-muted)', margin: '0 0 0.5rem' }}>
             Ordered by capital efficiency (highest post-tax NPV/Capex first). Fixed 2026 base; 2026 is period 1.
@@ -456,6 +476,7 @@ export default function PortfolioViewer() {
           ) : (
             <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: '1rem' }}>No data — ensure Post-Tax Cash Flow and Cash Capex metrics are available.</p>
           )}
+          <ChartDataDetails rows={creamData} columns={[{ key: 'Label', label: 'Contributor' }, { key: 'PI', label: 'PI (x)', numeric: true }, { key: 'Cum Capex', label: 'Cumulative Capex ($m)', numeric: true }, { key: 'Cum NPV', label: 'Cumulative NPV ($m)', numeric: true }]} />
         </div>
       </div>
 
