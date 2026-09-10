@@ -137,3 +137,13 @@ Verification on this feature: 70 Python/API tests passed and the frontend produc
 The checked-in configuration supports local development. A frontend build does not package or host the Python backend; deployment must provide the API, production request routing, and fallback routing for React's browser routes. The Vite development proxy does not configure those production services.
 
 [Return to repository overview](../README.md)
+
+## Operation input validation
+
+The configuration panel now validates calendar years as whole numbers within 2026–2040, rejects negative transaction magnitudes, and preserves signed CAPEX/OPEX $m adjustments. Percentage increases remain uncapped; reductions cannot exceed 100%, using the existing operation-specific fraction conventions. Optional zero/blank defaults remain supported. Field hints and errors appear on blur and Apply, with related fields rechecked when correcting errors.
+
+`POST /api/scenario/validate` checks configurations against case-profile data without running or publishing a scenario. The panel waits for these checks before allowing Apply and offers Retry if checking fails. It shows non-blocking warnings for partial/full timing clipping, complete truncation and combined absolute adjustments that turn costs into inflows. Same-year adjustments still accumulate, and either year order is permitted. Run repeats backend validation and publishes warnings with successful results. Existing calculation failures and empty-portfolio result checks still apply.
+
+Required parameters must be explicitly present on included non-reference instructions. In particular, absolute operations require their first non-zero amount/year pair. Legacy callers that omitted required parameters and relied on API zero defaults now receive validation errors; explicit valid zeros still work. Unused non-reference positions must be zero. No Change continues to clear parameters, and excluded configurations remain stored but inactive. Unknown non-empty operation labels are passed through for backend rejection rather than silently becoming No Change. Existing negative transaction values must be corrected; they are not silently rewritten.
+
+The implementation is limited to React/FastAPI input handling; shared Python calculation functions and the active Streamlit application are unchanged. The [operation matrix](Operation-Parameter-Validation-Matrix.md) records the agreed decisions and the original validation review. Browser checks should include stale validation responses, Retry, warning-only Apply, keyboard navigation, exclusion/re-inclusion and retaining the last successful result after a failed run.

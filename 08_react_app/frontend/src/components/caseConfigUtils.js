@@ -17,6 +17,22 @@ export function createConfigurationDraft(config = defaultCase()) {
   }
 }
 
+export function parameterRule(name, position) {
+  const timing = ['Delay', 'Accelerate'].includes(name)
+  const scale = ['Farm In (Increase)', 'Farm Down (Dilution)'].includes(name)
+  const percent = ['Production Change %', 'OPEX Change %', 'CAPEX Change %'].includes(name)
+  const absolute = ['CAPEX Change $m', 'OPEX Change $m'].includes(name)
+  if (timing && position === 1) return { kind: 'shift', hint: 'Zero or a positive whole number of years.' }
+  if ((timing && position === 3) || (scale && position === 5) ||
+      (absolute && [2, 4].includes(position)) || name.startsWith('Truncate') ||
+      ((scale || percent) && [2, 3].includes(position))) {
+    const optionalBound = (scale || percent) && [2, 3].includes(position)
+    return { kind: 'year', optionalBound, hint: `Whole year: 2026–2040.${optionalBound ? ' Leave blank or enter 0 to use the default bound.' : ''}` }
+  }
+  if ((scale || percent) && position === 1) return { kind: 'fraction', hint: 'Enter a fraction: 0.10 = 10%.', min: name === 'Farm Down (Dilution)' || scale ? 0 : -1, max: name === 'Farm Down (Dilution)' ? 1 : Infinity }
+  return { kind: 'amount', positive: !absolute, hint: absolute ? 'Non-zero $m: positive adds spending; negative reduces it.' : `Positive $m amount (${name === 'Farm Down (Dilution)' ? 'cash inflow' : 'cash outflow'}). Leave the amount and year blank for no transaction.` }
+}
+
 export function validateConfiguration(draft) {
   if (!draft.include) return {}
   const operation = findOperation(draft.operation)
@@ -26,34 +42,29 @@ export function validateConfiguration(draft) {
   for (const input of operation.inputs) {
     const index = input.position - 1
     const raw = draft.params[index]
+    const value = values[index]
+    const rule = parameterRule(operation.name, input.position)
     if (String(raw ?? '').trim() === '') {
       if (input.required) errors[index] = 'Enter a value.'
       continue
     }
-    if (!Number.isFinite(values[index])) errors[index] = 'Enter a finite number.'
-    else if (/year/i.test(input.label) && !/change in year/i.test(input.label) && !Number.isInteger(values[index])) {
-      errors[index] = 'Enter a whole number of years.'
-    }
+    if (!Number.isFinite(value)) errors[index] = 'Enter a finite number.'
+    else if (rule.kind === 'year' && !(!input.required && value === 0) &&
+      (!Number.isInteger(value) || value < 2026 || value > 2040)) errors[index] = 'Enter a whole year from 2026 to 2040.'
+    else if (rule.kind === 'shift' && (!Number.isInteger(value) || value < 0)) errors[index] = rule.hint
+    else if (rule.kind === 'fraction' && (value < rule.min || value > rule.max)) errors[index] = rule.min === -1 ? 'A reduction cannot exceed 100% (-1).' : rule.max === 1 ? 'Enter a fraction from 0 to 1.' : 'Enter zero or a positive fraction.'
+    else if (rule.kind === 'amount' && rule.positive && value < 0) errors[index] = 'Enter a positive amount.'
   }
   const name = draft.operation
-  if (['Delay', 'Accelerate'].includes(name) && values[0] < 0) errors[0] = 'Enter zero or a positive whole number.'
-  if (name === 'Farm In (Increase)' && values[0] < 0) errors[0] = 'Enter zero or a positive fraction.'
-  if (name === 'Farm Down (Dilution)' && (values[0] < 0 || values[0] > 1)) errors[0] = 'Enter a fraction from 0 to 1.'
-  if (name.endsWith('Change %') && values[0] < -1) errors[0] = 'A reduction cannot exceed 100% (-1).'
-  if ((name.startsWith('Farm ') || name.endsWith('Change %')) && values[1] && values[2] && values[1] > values[2]) {
-    errors[2] = 'End year must be on or after start year.'
-  }
+  if ((name.startsWith('Farm ') || name.endsWith('Change %')) && values[1] && values[2] && values[1] > values[2]) errors[2] = 'End year must be on or after start year.'
   function checkPair(amount, year, required = false) {
     if (!required && !values[amount] && !values[year]) return
     if (!values[amount]) errors[amount] = 'Enter a non-zero amount with this year.'
-    if (!Number.isInteger(values[year]) || values[year] < 2026 || values[year] > 2040) {
-      errors[year] = 'Enter a year from 2026 to 2040 with this amount.'
-    }
+    if (!Number.isInteger(values[year]) || values[year] < 2026 || values[year] > 2040) errors[year] = 'Enter a year from 2026 to 2040 with this amount.'
   }
   if (['Delay', 'Accelerate'].includes(name)) checkPair(1, 2)
   if (name.startsWith('Farm ')) checkPair(3, 4)
   if (name.endsWith('Change $m')) { checkPair(0, 1, true); checkPair(2, 3) }
-  if (name.startsWith('Truncate') && (!Number.isInteger(values[0]) || values[0] === 0)) errors[0] = 'Enter the year to retain the profile from or until.'
   return errors
 }
 

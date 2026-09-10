@@ -5,6 +5,7 @@ Scenario endpoints — run a scenario and compute comparison/waterfall data.
 from fastapi import APIRouter, HTTPException
 import logging
 import pandas as pd
+import numpy as np
 from ..state import app_state
 from ..schemas import ScenarioRunRequest, ScenarioRunResponse, WaterfallRequest, ValuationRequest
 from scenario_modeller.services.scenario_service import execute_scenario
@@ -14,24 +15,21 @@ from scenario_modeller.services.comparison_service import build_waterfall, scena
 router = APIRouter(prefix="/api/scenario")
 logger = logging.getLogger(__name__)
 
-OPERATION_MAP = {
-    "No Change":           "NoChange",
-    "Delay":               "Delay",
-    "Accelerate":          "Accelerate",
-    "Farm In (Increase)":  "Increase",
-    "Farm Down (Dilution)":"Dilution",
-    "Truncate Before":     "TruncateBefore",
-    "Truncate After":      "TruncateAfter",
-    "Production Change %": "ProdnAdj",
-    "OPEX Change %":       "CostAdjOpex",
-    "CAPEX Change %":      "CostAdjCapex",
-    "CAPEX Change $m":     "CapexAbsolute",
-    "OPEX Change $m":      "OpexAbsolute",
-}
+from ..operation_validation import OPERATION_MAP, validate_operations
+
+
+@router.post("/validate")
+def validate_scenario_endpoint(request: ScenarioRunRequest):
+    errors, warnings = validate_operations(request.instructions, app_state.raw_profiles)
+    return {"valid": not errors, "errors": errors, "warnings": warnings}
 
 
 @router.post("/run", response_model=ScenarioRunResponse)
 def run_scenario_endpoint(request: ScenarioRunRequest):
+    errors, warnings = validate_operations(request.instructions, app_state.raw_profiles)
+    if errors:
+        raise HTTPException(status_code=422, detail={
+            "valid": False, "message": "Check the operation inputs before running.", "diagnostics": errors})
     instructions_rows = []
     for inst in request.instructions:
         op_key = OPERATION_MAP.get(inst.operation, inst.operation)
@@ -61,6 +59,8 @@ def run_scenario_endpoint(request: ScenarioRunRequest):
             "diagnostics": run.diagnostics,
         })
     results = run.results
+    if not np.isfinite(results["Value"]).all():
+        raise HTTPException(status_code=422, detail="Calculation produced non-finite values; reduce the input magnitude.")
     # Same enriched reference used by Portfolio Viewer; full-portfolio comparison.
     baseline_results = app_state.profiles
 
@@ -88,7 +88,7 @@ def run_scenario_endpoint(request: ScenarioRunRequest):
         "scenario_description": request.scenario_description,
         "rationale": request.rationale,
         "valuation": valuation_basis(),
-        "diagnostics": run.diagnostics + app_state.baseline_diagnostics,
+        "diagnostics": warnings + run.diagnostics + app_state.baseline_diagnostics,
         "instructions": run.instructions.rename(columns={
             "ID": "id", "Case": "case", "Include": "include", "Operation": "operation",
             **{f"Param{i}": f"param{i}" for i in range(1, 6)},

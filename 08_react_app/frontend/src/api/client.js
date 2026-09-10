@@ -91,3 +91,5 @@ export const getReferenceMeasure = (metric, period) =>
   api.get('/api/portfolio/reference_measure', {
     params: { metric, year_from: period.from, year_to: period.to, average: period.average ?? false },
   })
+
+export const validateScenario = (payload) => api.post('/api/scenario/validate', payload)

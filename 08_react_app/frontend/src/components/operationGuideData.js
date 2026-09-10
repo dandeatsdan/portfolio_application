@@ -34,7 +34,7 @@ export const OPERATION_GUIDE_CATEGORIES = [
           { position: 3, label: 'Penalty year', required: false },
         ],
         example: 'Enter 2 to move a 2028 profile value to 2030. Optionally enter a penalty of 5 ($m) and a penalty year of 2027.',
-        notes: 'Use zero or a positive whole number of years. Values shifted beyond 2040 are removed. To apply a penalty, provide both its amount and a year within 2026–2040.',
+        notes: 'Use zero or a positive whole number of years. Values shifted beyond 2040 are removed. To apply a penalty, provide both a positive amount and a year within 2026–2040.',
       },
       {
         name: 'Accelerate',
@@ -45,7 +45,7 @@ export const OPERATION_GUIDE_CATEGORIES = [
           { position: 3, label: 'Funding year', required: false },
         ],
         example: 'Enter 1 to move a 2028 profile value to 2027. Optionally enter funding of 10 ($m) and a funding year of 2026.',
-        notes: 'Use zero or a positive whole number of years. Values shifted before 2026 are removed. To apply additional funding, provide both its amount and a year within 2026–2040.',
+        notes: 'Use zero or a positive whole number of years. Values shifted before 2026 are removed. To apply additional funding, provide both a positive amount and a year within 2026–2040.',
       },
       {
         name: 'Truncate Before',
@@ -81,7 +81,7 @@ export const OPERATION_GUIDE_CATEGORIES = [
           { position: 5, label: 'Payment year', required: false },
         ],
         example: 'Enter 0.10 for a 10% increase: a profile value of 100 becomes 110. An acquisition payment of 20 ($m) in 2028 adds a cash outflow in that year.',
-        notes: 'The increase is relative to the existing profile. Use a non-negative fraction. Optional year bounds include both start and end years; omitted bounds (or 0) use the first and last profile years. A payment needs both its amount and a year within 2026–2040.',
+        notes: 'The increase is relative to the existing profile. Use a non-negative fraction. Optional year bounds include both start and end years; omitted bounds (or 0) use the first and last profile years. A payment needs both a positive amount and a year within 2026–2040.',
       },
       {
         name: 'Farm Down (Dilution)',
@@ -94,7 +94,7 @@ export const OPERATION_GUIDE_CATEGORIES = [
           { position: 5, label: 'Proceeds year', required: false },
         ],
         example: 'Enter 0.25 for a 25% reduction: a profile value of 100 becomes 75. Disposal proceeds of 20 ($m) in 2028 add a cash inflow in that year.',
-        notes: 'Use a fraction from 0 to 1; 1 removes the profile in the selected years. Optional year bounds include both start and end years; omitted bounds (or 0) use the first and last profile years. Proceeds need both their amount and a year within 2026–2040.',
+        notes: 'Use a fraction from 0 to 1; 1 removes the profile in the selected years. Optional year bounds include both start and end years; omitted bounds (or 0) use the first and last profile years. Proceeds need both a positive amount and a year within 2026–2040.',
       },
     ],
   },

@@ -78,3 +78,34 @@ test('summary distinguishes exclusion, reference profile, timing and fractional 
   assert.equal(configurationSummary(configurationToApply(draft('Delay', ['2']))), 'Included · Delay: 2 years')
   assert.equal(configurationSummary(configurationToApply(draft('Farm In (Increase)', ['0.1']))), 'Included · Farm In (Increase): 10%')
 })
+
+test('calendar bounds and positive transactions apply across all operations', () => {
+  for (const operation of ['Truncate Before', 'Truncate After']) {
+    for (const year of ['235', '2025', '2041', '2028.5', '0']) assert.ok(Object.keys(validateConfiguration(draft(operation, [year]))).length)
+    for (const year of ['2026', '2040']) assert.deepEqual(validateConfiguration(draft(operation, [year])), {})
+  }
+  for (const operation of ['Farm In (Increase)', 'Farm Down (Dilution)', 'Production Change %', 'OPEX Change %', 'CAPEX Change %']) {
+    assert.ok(Object.keys(validateConfiguration(draft(operation, ['0.1', '235']))).length)
+    assert.deepEqual(validateConfiguration(draft(operation, ['0.1', '0', '0'])), {})
+  }
+  for (const operation of ['Delay', 'Accelerate']) {
+    assert.ok(Object.keys(validateConfiguration(draft(operation, ['1', '-5', '2028']))).length)
+    assert.deepEqual(validateConfiguration(draft(operation, ['235', '0', '0'])), {})
+  }
+  for (const operation of ['Farm In (Increase)', 'Farm Down (Dilution)']) assert.ok(Object.keys(validateConfiguration(draft(operation, ['0.1', '', '', '-5', '2028']))).length)
+})
+
+test('agreed increases, signed adjustments and same-year combinations stay valid', () => {
+  for (const operation of ['Farm In (Increase)', 'Production Change %', 'OPEX Change %', 'CAPEX Change %']) assert.deepEqual(validateConfiguration(draft(operation, ['10'])), {})
+  for (const operation of ['CAPEX Change $m', 'OPEX Change $m']) {
+    assert.deepEqual(validateConfiguration(draft(operation, ['20', '2028', '-5', '2028'])), {})
+    assert.deepEqual(validateConfiguration(draft(operation, ['20', '2030', '-500', '2028'])), {})
+    assert.ok(Object.keys(validateConfiguration(draft(operation, ['', '', '20', '2028']))).length)
+  }
+})
+
+test('unknown operations survive serialization for rejection rather than becoming NoChange', () => {
+  const [instruction] = buildScenarioInstructions([{ id: 1, case: 'Example' }], new Set([1]), { 1: { include: true, operation: 'Typo', params: [0, 0, 0, 0, 0] } })
+  assert.equal(instruction.operation, 'Typo')
+  assert.ok(validateConfiguration(draft('Typo', [])).operation)
+})

@@ -24,7 +24,7 @@ export function defaultCase() {
 export function buildScenarioInstructions(cases, shortlistIds, caseConfig) {
   return cases.map(c => {
     const config = shortlistIds.has(c.id) ? (caseConfig[c.id] ?? defaultCase()) : defaultCase()
-    const operation = OPERATION_MAP[config.operation] ?? 'NoChange'
+    const operation = OPERATION_MAP[config.operation] ?? config.operation
     const params = operation === 'NoChange' ? [] : config.params
     return {
       id: c.id,
