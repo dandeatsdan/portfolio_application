@@ -101,3 +101,5 @@ export const updateSavedScenario = (id, definition) => api.put(`/api/scenarios/$
 export const deleteSavedScenario = id => api.delete(`/api/scenarios/${encodeURIComponent(id)}`)
 
 export const getResultsAnalysis = payload => api.post('/api/scenario/analysis', payload)
+
+export const solveOptimisation = payload => api.post('/api/optimisation/solve', payload, { timeout: 60000 })

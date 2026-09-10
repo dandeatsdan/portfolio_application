@@ -1,0 +1,25 @@
+.portfolio-optimiser { max-width: 1500px; margin: 0 auto; }
+.optimiser-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.portfolio-optimiser .results-panel { margin-bottom: 20px; }
+.optimiser-step { display: inline-flex; width: 25px; height: 25px; border-radius: 50%; align-items: center; justify-content: center; background: var(--color-accent-dark); color: #fff; font-size: 12px; margin-right: 8px; }
+.optimiser-objective { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-top: 16px; }
+.optimiser-objective > div { flex: 1; min-width: 240px; }
+.portfolio-optimiser label { display: grid; gap: 6px; font-size: 12px; min-width: 0; }
+.portfolio-optimiser select, .portfolio-optimiser input { min-width: 0; padding: 7px 8px; border: 1px solid var(--color-border); border-radius: 4px; color: var(--color-text); background: #fff; font: inherit; }
+.optimiser-constraint { display: grid; grid-template-columns: repeat(2, minmax(120px, 1.3fr)) repeat(2, minmax(75px, .65fr)) minmax(95px, .9fr) minmax(110px, 1fr) minmax(140px, 1.2fr) auto; gap: 12px; align-items: end; padding: 16px 0; border-bottom: 1px solid var(--color-border); }
+.optimiser-constraint label:has(input[max="15"]) { grid-column: 7; }
+.optimiser-remove { grid-column: 8; }
+.portfolio-optimiser .optimiser-primary { background: var(--color-accent-dark); color: #fff; }
+.portfolio-optimiser button:disabled { opacity: .55; cursor: default; }
+.portfolio-optimiser .results-table-tools { margin-top: 24px; }
+.portfolio-optimiser button:focus-visible, .portfolio-optimiser input:focus-visible, .portfolio-optimiser select:focus-visible { outline: 2px solid var(--color-accent-dark); outline-offset: 2px; }
+.home-optimiser { display: flex; gap: 18px; align-items: center; width: 100%; text-align: left; padding: 22px; margin-bottom: 28px; border: 1px solid var(--color-border); border-top: 3px solid var(--color-accent-dark); border-radius: var(--radius); background: #fff; color: var(--color-accent-dark); cursor: pointer; }
+.home-optimiser strong { display: block; font-size: 20px; color: var(--color-text); margin-bottom: 5px; }
+.home-optimiser small { color: var(--color-text-muted); font-size: 14px; }
+@media (max-width: 1150px) { .optimiser-constraint { grid-template-columns: repeat(4, minmax(0, 1fr)); } .optimiser-constraint label:has(input[max="15"]), .optimiser-remove { grid-column: auto; } }
+@media (max-width: 650px) { .optimiser-constraint { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Match Portfolio Viewer shortlist highlighting without implying editable selection. */
+.optimiser-case--recommended { background: rgba(0,127,0,0.05); border-left: 3px solid var(--color-accent-dark); color: var(--color-text); }
+.optimiser-case--unselected { background: #f4f4f4; border-left: 3px solid transparent; color: #5c5c5c; }
+.optimiser-case--unselected .results-case-id { color: #5c5c5c; }

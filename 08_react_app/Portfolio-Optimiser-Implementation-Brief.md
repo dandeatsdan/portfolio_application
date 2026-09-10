@@ -1,5 +1,20 @@
 # Portfolio Optimiser — Claude Code / Codex Implementation Brief
 
+## Agreed first implementation
+
+The following decisions supersede conflicting recommendations later in this original brief:
+
+- Include/exclude reference cases only; all loaded cases are concurrent candidates. No mutually exclusive groups, delay/acceleration choices, or ownership optimisation in this version.
+- Maximise post-tax NPV using the existing 8% fixed-2026 basis. Objective period is independently selectable. Optional weighted objectives remain a follow-on feature.
+- Multiple Cash Capex and production constraints, each with its own period, minimum/maximum rule, and total-across-period or every-year basis.
+- Strict by default. Each positive target may explicitly allow up to 15% flexibility in whole-percent steps. Zero targets remain strict.
+- Try the original model, then widen only flexible limits by 1% of their original targets per attempt; each constraint stops widening at its own cap. Stop at the first feasible step and maximise NPV there. Never relax because a solve times out or merely because the unconstrained NPV would be higher.
+- Use PuLP 3.3.0 with HiGHS through highspy 1.15.1. A shared 30-second solver-attempt budget bounds a request. Incomplete solves publish no recommendation and never claim optimality.
+- Four lightweight numbered sections on a dedicated Optimiser page: objective, constraints, run, recommendation. Match the current app styling; no additional workflow title bar. Case controls use the existing right-hand dialog pattern, with staged Apply/Cancel.
+- Display original targets, adjusted limits, actual values and breaches. Preserve mandatory/excluded cases as strict rules. Show included and excluded cases in a searchable, sortable recommendation table.
+- Verify nonempty recommendations through the scenario engine before hand-off. Review as scenario creates an unsaved working definition, with excluded cases shortlisted and marked excluded; existing saved records are untouched.
+- An empty optimal portfolio is reported explicitly; it cannot be handed to the current scenario engine, which requires at least one included case.
+
 ## Purpose
 
 This document is an implementation brief for adding a **separate Portfolio Optimiser screen** to the React/FastAPI application in `08_react_app`.

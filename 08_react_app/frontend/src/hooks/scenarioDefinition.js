@@ -33,6 +33,7 @@ export function hydrateScenario(saved) {
 
 export function scenarioReducer(state, action) {
   switch (action.type) {
+    case 'recommendation': return { ...hydrateScenario({ ...action.definition, scenario_id: null, updated_at: null }), baseline: null, epoch: state.epoch + 1 }
     case 'load': return { ...hydrateScenario(action.saved), epoch: state.epoch + 1 }
     case 'deleted': return state.savedId !== action.id ? state : { ...state, savedId: null, updatedAt: null, baseline: null, epoch: state.epoch + 1 }
     case 'new': return { ...initialScenario(), epoch: state.epoch + 1 }

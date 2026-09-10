@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { getHealth } from '../api/client'
-import { BarChart2, PencilRuler, TrendingUp, FolderOpen } from 'lucide-react'
+import { BarChart2, PencilRuler, TrendingUp, FolderOpen, Target } from 'lucide-react'
 
 import SavedScenarios from '../components/SavedScenarios'
+import '../components/PortfolioOptimiser.css'
 
 const CARDS = [
   {
@@ -43,7 +44,7 @@ export default function Home() {
       {/* Hero */}
       <div style={{ marginBottom: '3rem', textAlign: 'center' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-          Explore, build and review portfolio scenarios
+          Explore, build, compare and optimise portfolios
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '1rem', margin: 0 }}>
           Choose where to begin — review the portfolio, build a scenario<br />or reopen a saved scenario.
@@ -150,6 +151,8 @@ export default function Home() {
           </div>
         ))}
       </div>
+
+      <button className="home-optimiser" onClick={() => navigate('/optimise')}><Target size={32} aria-hidden="true" /><span><strong>Portfolio Optimiser</strong><small>Choose objectives and constraints, then review a recommended portfolio as an editable scenario.</small></span></button>
 
       {/* Backend status */}
       {health && (

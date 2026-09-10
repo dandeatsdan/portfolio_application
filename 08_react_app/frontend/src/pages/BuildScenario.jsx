@@ -11,6 +11,7 @@ import FilterRail from '../components/FilterRail'
 import { filterScenarioCases } from './scenarioCaseFilters'
 import { SCENARIO_CASE_COLUMNS, sortScenarioCases } from './scenarioCaseSort'
 import RunConfirmation from '../components/RunConfirmation'
+import ClearScenarioConfirmation from '../components/ClearScenarioConfirmation'
 import OperationsGuide from '../components/OperationsGuide'
 import CaseConfiguration from '../components/CaseConfiguration'
 import SavedScenarios from '../components/SavedScenarios'
@@ -57,6 +58,7 @@ export default function BuildScenario() {
   const [storageError, setStorageError] = useState(null)
   const [loadErrors, setLoadErrors] = useState([])
   const [savedOpen, setSavedOpen] = useState(false)
+  const [clearOpen, setClearOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const saveLock = useRef(false)
   const mounted = useRef(true)
@@ -131,7 +133,10 @@ export default function BuildScenario() {
     }
   }
   function newScenario() {
-    if (dirty && !window.confirm('Discard unsaved changes and start a new scenario?')) return
+    setClearOpen(true)
+  }
+  function clearScenario() {
+    setClearOpen(false)
     dispatch({ type: 'new' })
     setScenarioResult(null)
     setLastRunError(null)
@@ -261,7 +266,7 @@ export default function BuildScenario() {
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
           <button type="button" className="saved-scenarios__trigger" onClick={() => save()} disabled={saving || scenario.running}>Save</button>
           <button type="button" className="saved-scenarios__trigger" aria-haspopup="dialog" disabled={saving || scenario.running} onClick={() => setSavedOpen(true)}>Saved scenarios</button>
-        <button type="button" className="saved-scenarios__trigger" disabled={saving || scenario.running} onClick={newScenario}>Clear scenario</button>
+        <button type="button" className="saved-scenarios__trigger" disabled={saving || scenario.running} aria-haspopup="dialog" onClick={newScenario}>Clear scenario</button>
         <button type="button" className="saved-scenarios__trigger"
           onClick={() => setConfirmRunOpen(true)} aria-haspopup="dialog"
           disabled={scenario.running || saving || includedCount === 0 || missingIds.length > 0}
@@ -537,6 +542,7 @@ export default function BuildScenario() {
         navigate(`/build?scenario=${id}`)
         setReload(value => value + 1)
       }} />}
+      {clearOpen && <ClearScenarioConfirmation name={scenario.name} dirty={dirty} onCancel={() => setClearOpen(false)} onConfirm={clearScenario} />}
       {confirmRunOpen && <RunConfirmation name={scenario.name} cases={cases} selectedIds={selectedIds}
         caseConfig={scenario.caseConfig} onCancel={() => setConfirmRunOpen(false)} onConfirm={handleRun} />}
       {editingCase && <CaseConfiguration key={editingCase.id} caseRow={editingCase} config={ops[editingCase.id]}

@@ -68,6 +68,7 @@ const NAV_ITEMS = [
   { to: '/portfolio', label: 'Portfolio Viewer' },
   { to: '/build',     label: 'Build a Scenario' },
   { to: '/results',   label: 'Scenario Results' },
+  { to: '/optimise', label: 'Portfolio Optimiser' },
 ]
 
 const HOME_PATHS = ['/']
@@ -111,7 +112,7 @@ export default function AppShell({ children, sidePanel }) {
 
           {/* Left panel — clips cleanly when collapsed */}
           <aside style={{
-            width:       panelOpen ? 'var(--sidebar-width)' : 0,
+            width:       sidePanel && panelOpen ? 'var(--sidebar-width)' : 0,
             flexShrink:  0,
             background:  '#F7F7F7',
             borderRight: '1px solid var(--color-border)',
