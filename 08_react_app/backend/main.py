@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .state import app_state
-from .routers import data, portfolio, scenario
+from .routers import data, portfolio, scenario, saved_scenarios
 
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ app.add_middleware(
 app.include_router(data.router)
 app.include_router(portfolio.router)
 app.include_router(scenario.router)
+app.include_router(saved_scenarios.router)
 
 
 @app.get("/api/health")

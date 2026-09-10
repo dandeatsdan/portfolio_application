@@ -26,7 +26,7 @@ export default function RunConfirmation({ name, cases, selectedIds, caseConfig, 
     <header>
       <h2 id="run-confirmation-title">Review and run scenario</h2>
       <p className="run-confirmation__name">{name || 'Unnamed scenario'}</p>
-      <p id="run-confirmation-description">Check these settings before running. Cancel to return and make changes.</p>
+      <p id="run-confirmation-description">Confirming saves these settings, then runs the scenario. Cancel to return without saving or running.</p>
     </header>
     <div className="run-confirmation__content">
       <p>{summary.referenceCount} using reference profiles · {summary.modifiedCount} modified · {summary.excludedCount} excluded</p>

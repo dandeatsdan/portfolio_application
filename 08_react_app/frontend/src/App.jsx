@@ -7,8 +7,10 @@
  *   FiltersContext     — global filter state, persisted across all pages
  *   ScenarioResultContext — last scenario run result
  */
-import { createContext, useState, useContext } from 'react'
+import { createContext, useState, useContext, useReducer, useCallback, useMemo, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { WorkingScenarioContext } from './hooks/WorkingScenarioContext'
+import { scenarioReducer, initialScenario, isDirty } from './hooks/scenarioDefinition'
 import AppShell from './components/AppShell'
 import Home             from './pages/Home'
 import PortfolioViewer  from './pages/PortfolioViewer'
@@ -27,13 +29,23 @@ export const SidePanelContext      = createContext({ sidePanel: null, setSidePan
 export const FiltersContext        = createContext({ filters: DEFAULT_FILTERS, setFilters: () => {} })
 
 export default function App() {
-  const [selectedIds,    setSelectedIds]    = useState(new Set())
+  const [working, dispatch] = useReducer(scenarioReducer, undefined, initialScenario)
+  const selectedIds = useMemo(() => new Set(working.selectedIds), [working.selectedIds])
+  const setSelectedIds = useCallback(value => dispatch({ type: 'selection', value }), [])
+  const dirty = isDirty(working)
+  useEffect(() => {
+    if (!dirty) return
+    const warn = event => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
   const [scenarioResult, setScenarioResult] = useState(null)
   const [lastRunError, setLastRunError] = useState(null)
   const [sidePanel,      setSidePanel]      = useState(null)
   const [filters,        setFilters]        = useState(DEFAULT_FILTERS)
 
   return (
+    <WorkingScenarioContext.Provider value={{ working, dispatch }}>
     <SelectionContext.Provider value={{ selectedIds, setSelectedIds }}>
       <ScenarioResultContext.Provider value={{ scenarioResult, setScenarioResult, lastRunError, setLastRunError }}>
         <FiltersContext.Provider value={{ filters, setFilters }}>
@@ -52,6 +64,7 @@ export default function App() {
         </FiltersContext.Provider>
       </ScenarioResultContext.Provider>
     </SelectionContext.Provider>
+    </WorkingScenarioContext.Provider>
   )
 }
 

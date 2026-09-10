@@ -3,57 +3,42 @@
  *
  * scenarioState: { name, description, rationale, cases: { [id]: {include, operation, params[]} } }
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useContext, useEffect } from 'react'
+import { WorkingScenarioContext } from './WorkingScenarioContext'
 import { runScenario } from '../api/client'
 import { buildScenarioInstructions, defaultCase } from './scenarioInstructions'
 
 export { OPERATION_LABELS } from './scenarioInstructions'
 
 export function useScenario(cases, shortlistIds) {
-  const [name,        setName]        = useState('Scenario 1')
-  const [description, setDescription] = useState('')
-  const [rationale,   setRationale]   = useState('')
-  const [caseConfig,  setCaseConfig]  = useState({})
+  const { working, dispatch } = useContext(WorkingScenarioContext)
+  const { name, description, rationale, caseConfig } = working
+  const setName = value => dispatch({ type: 'field', field: 'name', value })
+  const setDescription = value => dispatch({ type: 'field', field: 'description', value })
+  const setRationale = value => dispatch({ type: 'field', field: 'rationale', value })
   const [running,     setRunning]     = useState(false)
   const [result,      setResult]      = useState(null)
   const [runError,    setRunError]    = useState(null)
   const [diagnostics, setDiagnostics] = useState([])
 
-  // Initialise case config entries when cases load
+  useEffect(() => {
+    setResult(null)
+    setRunError(null)
+    setDiagnostics([])
+  }, [working.epoch])
+
   const initCases = useCallback((caseList, selectedIds) => {
-    const ids = selectedIds && selectedIds.length ? selectedIds : caseList.map(c => c.id)
-    setCaseConfig(prev => {
-      const next = { ...prev }
-      ids.forEach(id => {
-        if (!next[id]) next[id] = defaultCase()
-      })
-      return next
-    })
-  }, [])
-
-  const setCaseField = useCallback((id, field, value) => {
-    setCaseConfig(prev => ({
-      ...prev,
-      [id]: { ...prev[id] ?? defaultCase(), [field]: value },
-    }))
-  }, [])
-
-  const resetCase = useCallback((id) => {
-    setCaseConfig(prev => ({ ...prev, [id]: defaultCase() }))
-  }, [])
-
+    dispatch({ type: 'init', ids: selectedIds ?? caseList.map(c => c.id) })
+  }, [dispatch])
   const applyCaseConfig = useCallback((id, config) => {
-    setCaseConfig(prev => ({ ...prev, [id]: { ...config, params: [...config.params] } }))
-  }, [])
-
-  const setParam = useCallback((id, index, value) => {
-    setCaseConfig(prev => {
-      const cs = prev[id] ?? defaultCase()
-      const params = [...cs.params]
-      params[index] = value
-      return { ...prev, [id]: { ...cs, params } }
-    })
-  }, [])
+    dispatch({ type: 'config', id, config: { ...config, params: [...config.params] } })
+  }, [dispatch])
+  const resetCase = useCallback(id => dispatch({ type: 'config', id, config: defaultCase() }), [dispatch])
+  const setCaseField = (id, field, value) => applyCaseConfig(id, { ...(caseConfig[id] ?? defaultCase()), [field]: value })
+  const setParam = (id, index, value) => {
+    const config = caseConfig[id] ?? defaultCase()
+    applyCaseConfig(id, { ...config, params: config.params.map((p, i) => i === index ? value : p) })
+  }
 
   const instructions = buildScenarioInstructions(cases, shortlistIds, caseConfig)
   const includedCount = instructions.filter(instruction => instruction.include).length

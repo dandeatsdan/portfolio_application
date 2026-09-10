@@ -2,6 +2,8 @@
 
 Use this prompt in Claude Code to implement persistent, reloadable, editable scenarios in the React/FastAPI application.
 
+**Later UI decision:** omit the Save As control. Users name or rename a scenario through the existing text field and Save; New scenario starts a separate record. This supersedes Save As UI requirements below. Saved scenarios are accessed through a small button beneath the Home Build a Scenario card that opens the shared right-hand panel.
+
 ---
 
 You are working in the repository `dandeatsdan/portfolio_application`.
@@ -82,19 +84,19 @@ Do **not** redesign the scenario engine's operation model as part of this featur
 
 ### 2. Persistence technology
 
-For this local learning/prototype application, use a small **SQLite** persistence layer unless inspection of the repository reveals an existing persistence mechanism that should be reused.
+**User decision, 10 September 2026:** use one JSON file per saved scenario instead of SQLite. This supersedes the original SQLite recommendation.
 
 Requirements:
 
-- persistence must survive FastAPI/application restart;
-- isolate database access behind a repository/service abstraction rather than scattering SQL through API routes;
-- initialise the database safely and idempotently;
-- use parameterised SQL;
-- store the SQLite database in an appropriate application-data location;
-- ensure the generated database file is ignored by Git;
-- do not commit generated database contents.
-
-Prefer the Python standard library `sqlite3` unless an existing project dependency justifies another approach. Avoid adding a heavy ORM solely for this feature.
+- persistence survives backend/application restart while the storage folder remains on disk;
+- isolate file access behind a small repository abstraction;
+- store files in `08_react_app/app_data/scenarios/`, with an optional `SCENARIO_STORAGE_DIR` override;
+- name files using server-generated UUIDs, not user-entered scenario names;
+- write a temporary file in the same directory, flush it, then atomically replace the destination;
+- reject corrupt/unsupported records without silently resetting them; list healthy records alongside file errors;
+- prevent stale updates using an expected modified timestamp;
+- ignore generated storage files in Git;
+- keep this a local, single-process prototype; no database server or new storage dependency.
 
 ### 3. Backend API
 
@@ -269,7 +271,7 @@ Backend tests should cover at least:
 3. retrieve complete scenario;
 4. update scenario;
 5. delete/not-found behaviour if delete is exposed;
-6. database survives repository/service recreation;
+6. JSON files survive repository/service recreation;
 7. malformed persisted/request configuration is rejected appropriately.
 
 Frontend/unit tests should cover at least:
@@ -337,7 +339,7 @@ The feature is complete when all of the following are demonstrably true:
 9. Save As produces an independent scenario with a new ID.
 10. Unsaved edits are visibly distinguished from the last persisted state.
 11. Existing scenario calculations and regression tests continue to pass.
-12. The SQLite file/generated persistence artefacts are not committed to Git.
+12. The JSON files/generated persistence artefacts are not committed to Git.
 13. The README accurately describes the new behaviour and limitations.
 
 ## Working approach

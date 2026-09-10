@@ -64,7 +64,7 @@ Use the [health endpoint](http://localhost:8000/api/health) to check that the AP
 | Build a Scenario | `/build` | Configure included cases, operations, and parameters, then run the scenario. |
 | Scenario Results | `/results` | Compare reference and scenario outputs, including KPI differences, charts, waterfall analysis, and applied changes. |
 
-Filters, shortlisted case IDs, and the latest scenario result are managed through React context. They are in-memory application state, not a saved scenario database.
+Filters, the working scenario (including shortlisted IDs) and the latest successful result use React context. The working definition survives page navigation and can be explicitly saved as JSON; unsaved memory state still disappears on a browser refresh. Results are not persisted.
 
 All loaded cases are included using their **reference profiles** by default. The shortlist identifies cases to modify, explicitly exclude, or keep handy for review. Cases in **Available cases** remain included using their reference profiles. Removing a case from the shortlist restores its reference profile and includes it in the scenario; internally, this resets inclusion to yes, operation to No Change, and all five parameters to zero. Run instructions cover all loaded cases, using overrides only for shortlisted cases; an empty shortlist runs the full unchanged portfolio. Running with every case explicitly excluded is disabled. This contract applies to React; active Streamlit behaviour is unchanged by this correction.
 
@@ -147,3 +147,29 @@ The configuration panel now validates calendar years as whole numbers within 202
 Required parameters must be explicitly present on included non-reference instructions. In particular, absolute operations require their first non-zero amount/year pair. Legacy callers that omitted required parameters and relied on API zero defaults now receive validation errors; explicit valid zeros still work. Unused non-reference positions must be zero. No Change continues to clear parameters, and excluded configurations remain stored but inactive. Unknown non-empty operation labels are passed through for backend rejection rather than silently becoming No Change. Existing negative transaction values must be corrected; they are not silently rewritten.
 
 The implementation is limited to React/FastAPI input handling; shared Python calculation functions and the active Streamlit application are unchanged. The [operation matrix](Operation-Parameter-Validation-Matrix.md) records the agreed decisions and the original validation review. Browser checks should include stale validation responses, Retry, warning-only Apply, keyboard navigation, exclusion/re-inclusion and retaining the last successful result after a failed run.
+
+## Saving and reopening scenarios (JSON)
+
+Use **Save** on Build a Scenario to create a saved definition or update the currently opened one. Edit the Scenario Name field to name or rename it, then choose Save. Renaming an opened scenario updates that same record. Use **New scenario** to start a separate definition. Names need not be unique. Changes made while a save is in flight stay in the working copy and remain dirty if they were not part of that save.
+
+A small Saved scenarios button beneath the Build a Scenario card on Home opens the shared right-hand panel, listing saved scenarios by name and modified date. The editor’s Saved scenarios button opens the same panel. Open uses `/build?scenario=<uuid>`, which also works after a browser refresh. The full shortlist, inclusion decisions, operation labels, all five parameter positions, name, description and rationale are restored together. Drafts remain in shared React state when moving between pages. Opening another scenario or starting a new scenario asks before replacing unsaved work. Browser refresh/close also requests confirmation when the working definition is dirty. Cancel retains the working scenario.
+
+Reopening clears previous results; run again against the currently loaded reference data. Save does not run calculations. Confirming Save and run first saves the definition; saving failure stops the run and leaves the working changes intact. A calculation failure does not undo that save, and failed runs still preserve the last successful result. Missing reference cases and operation validation issues are reported on Open without silently deleting configuration; unavailable cases have an explicit Remove action before running. Corrupt or unsupported files are left unchanged and reported; other healthy scenarios remain listed.
+
+No extra dependency or database server is required. The backend creates `08_react_app/app_data/scenarios/` on first save, using one `<uuid>.json` file per definition. Set `SCENARIO_STORAGE_DIR` before starting the backend to use another folder (an absolute path is recommended). Storage paths are independent of the launch directory by default. The generated `app_data/` folder is ignored by Git. Back up the folder separately; backend/browser restarts preserve it, but deleting a Codespace or its disk can remove it. Apart from saving on confirmed Run, there are no automatic saves. Result snapshots, reference-data snapshots and historical revisions are not stored.
+
+The file schema includes `schema_version: 1`, UUID, created/updated timestamps and the editable definition. The repository writes through a flushed temporary file in the same directory and atomically replaces the destination. Failed writes preserve the prior file. This version supports a **single backend process** for local prototype use: a process lock serializes writes, and expected timestamps reject stale browser-tab updates. Do not run multiple workers against the same folder. This is not shared multi-user storage or a substitute for backups.
+
+Saved-definition API:
+
+- `GET /api/scenarios`: `{scenarios, errors}` with lightweight summaries and unreadable-file notices.
+- `GET /api/scenarios/{uuid}`: full definition plus current `validation_errors`.
+- `POST /api/scenarios`: validate and create a definition; returns 201.
+- `PUT /api/scenarios/{uuid}`: validate and update; requires `expected_updated_at` from the last load/save. A stale update returns 409; open the scenario through Saved scenarios before updating again.
+- `DELETE /api/scenarios/{uuid}`: delete a record; returns 204. Deletion is API-only in this version.
+
+Malformed definitions/IDs return 422, missing records 404, corrupt/unsupported records 409 and storage failures 503. Save validation reuses operation input handling. UUID persistence identity is separate from the engine's numeric run identifier; the analytical engine is unchanged.
+
+Verification includes API round trips with unchanged, modified and excluded cases; running reopened instructions; repository recreation; failed atomic writes; malformed/corrupt files; stale updates; missing reference cases; and frontend reducer tests for rehydration, dirty state, Save/Save As and late save responses. Manual browser checks remain: save/restart/open, Cancel when replacing dirty work, refresh the saved URL, navigation with an unsaved draft, renaming, and storage-error Retry/Reload behaviour.
+
+The editor groups compact Save and Saved scenarios controls beneath Save and run. New scenario is available inside the saved-scenarios panel; there is no Reload saved version button. The panel lists saved definitions, not historical revisions.

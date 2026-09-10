@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { getHealth } from '../api/client'
-import { BarChart2, PencilRuler, TrendingUp } from 'lucide-react'
+import { BarChart2, PencilRuler, TrendingUp, FolderOpen } from 'lucide-react'
+
+import SavedScenarios from '../components/SavedScenarios'
 
 const CARDS = [
   {
@@ -23,13 +25,14 @@ const CARDS = [
     step:  3,
     icon:  TrendingUp,
     title: 'Scenario Results',
-    desc:  'Open saved scenario results and review the portfolio impact.',
+    desc:  'Review the latest successful scenario run and its portfolio impact.',
   },
 ]
 
 export default function Home() {
   const navigate = useNavigate()
   const [health, setHealth] = useState(null)
+  const [savedOpen, setSavedOpen] = useState(false)
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => setHealth({ status: 'error' }))
@@ -43,17 +46,18 @@ export default function Home() {
           Explore, build and review portfolio scenarios
         </h1>
         <p style={{ color: 'var(--color-text-muted)', fontSize: '1rem', margin: 0 }}>
-          Choose where to begin — review the portfolio, build a scenario<br />or return to saved results.
+          Choose where to begin — review the portfolio, build a scenario<br />or reopen a saved scenario.
         </p>
       </div>
 
       {/* Destination cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
+      <div className="home-destinations">
         {CARDS.map(({ to, step, icon: Icon, title, desc }) => (
+          <div key={to} className="home-destination">
           <button
-            key={to}
             onClick={() => navigate(to)}
             style={{
+              flex:          1,
               background:    '#fff',
               border:        '1px solid var(--color-border)',
               borderTop:     '3px solid var(--color-accent-dark)',
@@ -89,8 +93,19 @@ export default function Home() {
             </span>
             <span style={{ fontSize: '1.1rem', color: 'var(--color-accent-dark)', marginTop: '0.25rem' }}>→</span>
           </button>
+          <div className="home-destination__secondary">
+            {to === '/build' && <button type="button" className="saved-scenarios__trigger" aria-haspopup="dialog" onClick={() => setSavedOpen(true)}>
+              <FolderOpen size={14} aria-hidden="true" /> Saved scenarios
+            </button>}
+          </div>
+          </div>
         ))}
       </div>
+
+      {savedOpen && <SavedScenarios onClose={() => setSavedOpen(false)} onOpen={id => {
+        setSavedOpen(false)
+        navigate(`/build?scenario=${id}`)
+      }} />}
 
       {/* Journey steps */}
       <div style={{

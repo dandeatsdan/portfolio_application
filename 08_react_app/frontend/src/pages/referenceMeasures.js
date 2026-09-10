@@ -26,7 +26,7 @@ export function referenceLabel({ metric, period }) {
   const timeframe = REFERENCE_PERIODS.find(p => p.value === period)
   const name = metric === PRODUCTION_METRIC
     ? `Production (${timeframe.from !== timeframe.to && !timeframe.average ? 'mmboe' : 'mboed'})`
-    : metricDisplayName(metric)
+    : metric === NPV_METRIC ? 'Post-tax NPV at 8% ($m)' : metricDisplayName(metric)
   return `${name} · ${timeframe.label}`
 }
 

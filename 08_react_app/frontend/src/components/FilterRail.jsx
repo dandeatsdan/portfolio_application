@@ -101,7 +101,7 @@ function CheckList({ available, selected, onChange }) {
   )
 }
 
-export default function FilterRail({ filters, onChange }) {
+export default function FilterRail({ filters, onChange, showYearRange = true }) {
   const [open, setOpen] = useState({ yearRange: true, planTypes: true })
   const [options, setOptions] = useState({
     plan_types: [], group_entities: [], segments: [],
@@ -145,7 +145,7 @@ export default function FilterRail({ filters, onChange }) {
       </div>
 
       {/* Year Range */}
-      <Section label="Year Range" selectedCount={0} open={!!open.yearRange} onToggle={() => toggleSection('yearRange')} onClear={() => {}}>
+      {showYearRange && <Section label="Year Range" selectedCount={0} open={!!open.yearRange} onToggle={() => toggleSection('yearRange')} onClear={() => {}}>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginBottom: 2 }}>From</div>
@@ -164,7 +164,9 @@ export default function FilterRail({ filters, onChange }) {
             />
           </div>
         </div>
-      </Section>
+      </Section>}
+
+      {!showYearRange && <p style={{ color: 'var(--color-text-muted)', fontSize: 11 }}>Filter table rows here. Set reference periods in Edit metrics.</p>}
 
       {/* Dimension filters — cascaded */}
       {DIMENSIONS.map(({ key, label, optKey }) => {

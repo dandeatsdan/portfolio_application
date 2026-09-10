@@ -1,5 +1,5 @@
-import { useState, useEffect, useContext } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useContext, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CircleHelp, Pencil, SlidersHorizontal } from 'lucide-react'
 import { usePortfolio } from '../hooks/usePortfolio'
 import { useScenario } from '../hooks/useScenario'
@@ -8,11 +8,16 @@ import { useReferenceMeasures } from '../hooks/useReferenceMeasures'
 import { DEFAULT_REFERENCES, REFERENCE_KEYS, referenceLabel, metricDisplayName } from './referenceMeasures'
 import { SelectionContext, ScenarioResultContext, SidePanelContext, FiltersContext } from '../App'
 import FilterRail from '../components/FilterRail'
+import { filterScenarioCases } from './scenarioCaseFilters'
 import { SCENARIO_CASE_COLUMNS, sortScenarioCases } from './scenarioCaseSort'
 import RunConfirmation from '../components/RunConfirmation'
 import OperationsGuide from '../components/OperationsGuide'
 import CaseConfiguration from '../components/CaseConfiguration'
+import SavedScenarios from '../components/SavedScenarios'
 import ReferenceConfig from '../components/ReferenceConfig'
+import { WorkingScenarioContext } from '../hooks/WorkingScenarioContext'
+import { isDirty, persistScenario, saveBeforeRun } from '../hooks/scenarioDefinition'
+import { getSavedScenario, createSavedScenario, updateSavedScenario } from '../api/client'
 import { configurationSummary } from '../components/caseConfigUtils'
 
 function fmt(v) {
@@ -41,6 +46,22 @@ function SortableCaseHeader({ column: { key, label, title: colTitle, numeric }, 
 
 export default function BuildScenario() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const requestedId = searchParams.get('scenario')
+  const { working, dispatch } = useContext(WorkingScenarioContext)
+  const dirty = isDirty(working)
+  const latestWorking = useRef(working)
+  latestWorking.current = working
+  const [pendingOpen, setPendingOpen] = useState(null)
+  const [opening, setOpening] = useState(false)
+  const [storageError, setStorageError] = useState(null)
+  const [loadErrors, setLoadErrors] = useState([])
+  const [savedOpen, setSavedOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const saveLock = useRef(false)
+  const mounted = useRef(true)
+  const [reload, setReload] = useState(0)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const { cases, metrics, loading, error } = usePortfolio()
   const { selectedIds, setSelectedIds } = useContext(SelectionContext)
   const { setScenarioResult, setLastRunError } = useContext(ScenarioResultContext)
@@ -48,11 +69,78 @@ export default function BuildScenario() {
   const { filters, setFilters } = useContext(FiltersContext)
 
   useEffect(() => {
-    setSidePanel(<FilterRail filters={filters} onChange={setFilters} cases={cases} />)
+    setSidePanel(<FilterRail filters={filters} onChange={setFilters} showYearRange={false} />)
     return () => setSidePanel(null)
   }, [filters, cases, setSidePanel, setFilters])
 
   const scenario = useScenario(cases, selectedIds)
+
+  useEffect(() => {
+    if (!requestedId || (requestedId === working.savedId && reload === 0)) {
+      setOpening(false)
+      setPendingOpen(null)
+      return
+    }
+    let active = true
+    setOpening(true)
+    setStorageError(null)
+    setPendingOpen(null)
+    getSavedScenario(requestedId).then(saved => {
+      if (active) setPendingOpen(saved)
+    }).catch(err => { if (active) setStorageError(err.message) })
+      .finally(() => { if (active) setOpening(false) })
+    return () => { active = false }
+  }, [requestedId, reload]) // Loading is explicit; editing the working copy must never trigger a reload.
+
+  function acceptOpen(saved) {
+    dispatch({ type: 'load', saved })
+    setLoadErrors(saved.validation_errors ?? [])
+    setPendingOpen(null)
+    setScenarioResult(null)
+    setLastRunError(null)
+    setReload(0)
+  }
+  useEffect(() => {
+    if (pendingOpen && !dirty) acceptOpen(pendingOpen)
+  }, [pendingOpen, dirty]) // eslint-disable-line
+
+  async function save() {
+    if (saveLock.current) return false
+    const snapshot = working
+    saveLock.current = true
+    setSaving(true)
+    setStorageError(null)
+    try {
+      const action = await persistScenario(snapshot, { create: createSavedScenario, update: updateSavedScenario })
+      dispatch(action)
+      if (mounted.current && latestWorking.current.epoch === snapshot.epoch) {
+        setLoadErrors([])
+        navigate(`/build?scenario=${action.saved.scenario_id}`, { replace: true })
+        return true
+      }
+      return false
+    } catch (err) {
+      if (mounted.current) {
+        setStorageError(err.message)
+        setLoadErrors(err.diagnostics ?? [])
+      }
+      return false
+    } finally {
+      saveLock.current = false
+      if (mounted.current) setSaving(false)
+    }
+  }
+  function newScenario() {
+    if (dirty && !window.confirm('Discard unsaved changes and start a new scenario?')) return
+    dispatch({ type: 'new' })
+    setScenarioResult(null)
+    setLastRunError(null)
+    setStorageError(null)
+    setLoadErrors([])
+    navigate('/build', { replace: true })
+  }
+  const missingIds = working.selectedIds.filter(id => !cases.some(c => c.id === id))
+
 
   const [references, setReferences] = useState(DEFAULT_REFERENCES)
   const referenceData = useReferenceMeasures(references)
@@ -77,7 +165,8 @@ export default function BuildScenario() {
   const workingCases = cases.filter(c => selectedIds.has(c.id))
   const editingCase = workingCases.find(c => c.id === editingCaseId)
   const availableCases = cases.filter(c => !selectedIds.has(c.id))
-  const visibleAvailableCases = availableCases.filter(c =>
+  const visibleWorkingCases = filterScenarioCases(workingCases, filters)
+  const visibleAvailableCases = filterScenarioCases(availableCases, filters).filter(c =>
     (c.case_name ?? '').toLowerCase().includes(availableSearch.trim().toLowerCase())
   )
 
@@ -104,7 +193,7 @@ export default function BuildScenario() {
     availableSort,
   )
   const sortedShortlistedCases = sortScenarioCases(
-    workingCases.map(withReferences),
+    visibleWorkingCases.map(withReferences),
     shortlistSort,
   )
 
@@ -130,7 +219,7 @@ export default function BuildScenario() {
 
   async function handleRun() {
     setConfirmRunOpen(false)
-    await scenario.run()
+    await saveBeforeRun(save, scenario.run)
   }
 
   useEffect(() => {
@@ -145,6 +234,14 @@ export default function BuildScenario() {
     if (scenario.runError) setLastRunError(scenario.runError)
   }, [scenario.runError, setLastRunError])
 
+  if (opening || pendingOpen) return <section>
+    {opening ? <p role="status">Opening saved scenario…</p> : <>
+      <h2>Open {pendingOpen.name}?</h2>
+      <p>Your working scenario has unsaved changes. Opening this saved scenario will replace them.</p>
+      <button onClick={() => acceptOpen(pendingOpen)}>Discard changes and open</button>{' '}
+      <button onClick={() => { setPendingOpen(null); navigate(working.savedId ? `/build?scenario=${working.savedId}` : '/build', { replace: true }) }}>Keep working scenario</button>
+    </>}
+  </section>
   if (loading) return <p>Loading…</p>
   if (error)   return <p style={{ color: 'var(--color-negative)' }}>Error: {error}</p>
 
@@ -158,11 +255,12 @@ export default function BuildScenario() {
             All cases start included using their reference profiles; removing a case from the shortlist restores this default.
           </p>
         </div>
+        <div style={{ display: 'grid', gap: 6 }}>
         <button
           type="button"
           onClick={() => setConfirmRunOpen(true)}
           aria-haspopup="dialog"
-          disabled={scenario.running || includedCount === 0}
+          disabled={scenario.running || saving || includedCount === 0 || missingIds.length > 0}
           style={{
             padding: '0.7rem 1.6rem',
             background: scenario.running || includedCount === 0 ? 'var(--color-border)' : 'var(--color-accent-dark)',
@@ -171,10 +269,24 @@ export default function BuildScenario() {
             cursor: scenario.running || includedCount === 0 ? 'default' : 'pointer',
           }}
         >
-          {scenario.running ? 'Running…' : `▶ Run Scenario (${includedCount} included)`}
+          {saving ? 'Saving…' : scenario.running ? 'Running…' : '▶ Save and run'}
         </button>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <button type="button" className="saved-scenarios__trigger" onClick={() => save()} disabled={saving || scenario.running}>Save</button>
+          <button type="button" className="saved-scenarios__trigger" aria-haspopup="dialog" disabled={saving || scenario.running} onClick={() => setSavedOpen(true)}>Saved scenarios</button>
+        </div>
+        </div>
       </div>
 
+      {storageError && <div role="alert"><p>{storageError}</p>
+        {requestedId && requestedId !== working.savedId && <button onClick={() => setReload(value => value + 1)}>Retry opening</button>}
+      </div>}
+      {loadErrors.length > 0 && <div role="alert"><p>Review these configuration issues before saving or running:</p>
+        <ul>{loadErrors.map((item, i) => <li key={i}>Case {item.ID}: {item.message}</li>)}</ul>
+      </div>}
+      {missingIds.length > 0 && <div role="alert"><p>These saved cases are no longer in the portfolio. Remove them before running:</p>
+        {missingIds.map(id => <button key={id} onClick={() => removeFromShortlist(id)}>Remove unavailable case {id}</button>)}
+      </div>}
       {scenario.runError && (
         <div role="alert" style={{ padding: '0.75rem', background: '#fef2f2', border: '1px solid var(--color-negative)', borderRadius: 4, color: 'var(--color-negative)', marginBottom: '1rem', fontSize: 13 }}>
           {scenario.runError}
@@ -220,7 +332,7 @@ export default function BuildScenario() {
 
       {/* Case configuration table */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.35rem' }}>
-        <h3 style={{ margin: 0 }}>Shortlisted cases ({workingCases.length})</h3>
+        <h3 style={{ margin: 0 }}>Shortlisted cases ({visibleWorkingCases.length} of {workingCases.length})</h3>
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
           <button
             type="button"
@@ -260,7 +372,7 @@ export default function BuildScenario() {
         onClose={() => setReferenceConfigOpen(false)}
       />
       <p role="status" className="text-small text-muted" style={{ marginBottom: '0.5rem' }}>
-        Portfolio: {includedCount} included · {cases.length - includedCount} excluded · {modifiedCount} modified
+        Portfolio: {includedCount} included · {cases.length - includedCount} excluded · {modifiedCount} modified. Filters only change visible rows; hidden cases keep their scenario settings.
       </p>
       <div style={{ overflowX: 'auto', marginBottom: '1.25rem' }}>
         <table aria-label="Shortlisted cases" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
@@ -288,10 +400,10 @@ export default function BuildScenario() {
             </tr>
           </thead>
           <tbody>
-            {workingCases.length === 0 && (
+            {visibleWorkingCases.length === 0 && (
               <tr>
                 <td colSpan={shortlistColumns.length + 3} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                  <span role="status">No cases shortlisted. All cases will use their reference profiles. Expand Available cases below to shortlist cases for adjustment, exclusion, or review.</span>
+                  <span role="status">{workingCases.length ? 'No shortlisted cases match the filters. Clear filters to see the full shortlist.' : 'No cases shortlisted. All cases will use their reference profiles. Expand Available cases below to shortlist cases for adjustment, exclusion, or review.'}</span>
                 </td>
               </tr>
             )}
@@ -335,7 +447,7 @@ export default function BuildScenario() {
 
       {/* Available cases — adding/removing uses the shortlist shared with Portfolio Viewer. */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.5rem 0', marginBottom: '0.5rem' }}>
-        <h3 style={{ margin: 0 }}>Available cases ({availableCases.length})</h3>
+        <h3 style={{ margin: 0 }}>Available cases ({visibleAvailableCases.length} of {availableCases.length})</h3>
         <button
           type="button"
           aria-expanded={availableOpen}
@@ -397,7 +509,7 @@ export default function BuildScenario() {
               {visibleAvailableCases.length === 0 && (
                 <tr>
                   <td colSpan={columns.length + 1} style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                    <span role="status">{availableCases.length === 0 ? 'All cases are shortlisted.' : 'No available cases match your search.'}</span>
+                    <span role="status">{availableCases.length === 0 ? 'All cases are shortlisted.' : 'No available cases match your search or filters.'}</span>
                   </td>
                 </tr>
               )}
@@ -427,6 +539,11 @@ export default function BuildScenario() {
         </div>
       </div>
 
+      {savedOpen && <SavedScenarios onClose={() => setSavedOpen(false)} onNew={() => { setSavedOpen(false); newScenario() }} onOpen={id => {
+        setSavedOpen(false)
+        navigate(`/build?scenario=${id}`)
+        setReload(value => value + 1)
+      }} />}
       {confirmRunOpen && <RunConfirmation name={scenario.name} cases={cases} selectedIds={selectedIds}
         caseConfig={scenario.caseConfig} onCancel={() => setConfirmRunOpen(false)} onConfirm={handleRun} />}
       {editingCase && <CaseConfiguration key={editingCase.id} caseRow={editingCase} config={ops[editingCase.id]}

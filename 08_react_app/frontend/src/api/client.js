@@ -93,3 +93,9 @@ export const getReferenceMeasure = (metric, period) =>
   })
 
 export const validateScenario = (payload) => api.post('/api/scenario/validate', payload)
+
+export const listSavedScenarios = () => api.get('/api/scenarios')
+export const getSavedScenario = id => api.get(`/api/scenarios/${encodeURIComponent(id)}`)
+export const createSavedScenario = definition => api.post('/api/scenarios', definition)
+export const updateSavedScenario = (id, definition) => api.put(`/api/scenarios/${encodeURIComponent(id)}`, definition)
+export const deleteSavedScenario = id => api.delete(`/api/scenarios/${encodeURIComponent(id)}`)
