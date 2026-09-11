@@ -1,3 +1,29 @@
+# ========================================================================
+# REFERENCE DATA API — POPULATE LISTS, CONTROLS AND LOOKUPS
+# ========================================================================
+#
+# These read endpoints expose the already-loaded app_state tables to React.
+# They do not reload CSVs or execute scenarios. get_cases returns stable
+# IDs alongside display names and classification fields; get_operations
+# returns descriptions and input-slot metadata; get_totals exposes the
+# fixed five-year reference lookup values. get_metrics supplies names.
+#
+# How the filter choices work
+# ---------------------------
+# get_filter_options calculates each dimension's choices after applying
+# all OTHER active dimensions. For example, country choices respect the
+# selected region and plan type, but do not restrict themselves to the
+# currently selected countries. This supports changing a selection without
+# making all alternative choices disappear. Selections arrive as comma-
+# separated strings and are matched against case-listing values.
+#
+# The conversion helpers translate blank/n/a metadata and unavailable
+# numeric lookup values into JSON nulls. These endpoints expose reference
+# metadata/lookup records; they are not the general presentation-inversion
+# layer for chart values.
+# Read state.py for loading, portfolio.py for filtered measures, and
+# operation_validation.py for rules beyond the operations CSV's labels.
+
 """
 Data endpoints — case listing, operations library, totals & averages.
 """

@@ -1,3 +1,42 @@
+# ========================================================================
+# BACKEND REFERENCE STATE — LOAD ONCE, REUSE IN MEMORY
+# ========================================================================
+#
+# Purpose
+# -------
+# AppState holds the reference datasets needed by API requests. main.py
+# calls load during application startup. The data directory is discovered
+# from the candidate sibling sample-data paths defined below.
+#
+# Loading sequence
+# ----------------
+# 1. Load the case listing and source profile CSVs.
+# 2. Strip stale derived financial rows and load country/year tax rates.
+# 3. Calculate a fresh post-tax reference portfolio and its diagnostics.
+# 4. Load operation metadata and refresh derived five-year totals.
+# 5. Read the metrics-helper CSV's Invert=Yes entries for presentation.
+# 6. Assign the prepared tables to the shared app_state instance.
+# The expensive baseline preparation is done before replacing its stored
+# fields, so a failed candidate calculation does not replace the baseline.
+#
+# The two profile tables are deliberately different
+# ------------------------------------------------
+# raw_profiles contains the source metrics used for scenario operations.
+# profiles includes the freshly derived post-tax reference metrics used
+# for portfolio analysis and optimiser coefficients. Both retain analytical
+# signs. invert_metrics is a separate set of metric names, used later when
+# formatting reporting values on copies of the data.
+#
+# Memory is not scenario persistence
+# ----------------------------------
+# This state belongs to one Python process and is rebuilt on restart.
+# CSV edits are picked up when load runs again, not on every API request.
+# Scenario run inputs arrive in requests; saved definitions live in the
+# separate JSON repository. Multiple backend worker processes would each
+# have their own AppState instance and in-memory baseline.
+# Read data/loaders.py and engine/financials.py to follow data preparation;
+# read scenario_repository.py for durable saved scenario definitions.
+
 """
 Application-level state loaded once at startup.
 

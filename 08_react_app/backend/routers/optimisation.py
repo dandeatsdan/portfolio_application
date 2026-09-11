@@ -1,3 +1,50 @@
+# ========================================================================
+# OPTIMISATION API — VALIDATE A REQUEST AND CALL THE SOLVER SERVICE
+# ========================================================================
+#
+# Where it fits
+# -------------
+# React Portfolio Optimiser -> POST /api/optimisation/solve -> this router
+#   -> OptimisationSpec / Constraint records -> optimisation_service.optimise
+#   -> typed result describing the selection and constraint checks.
+# The mathematical model is in the shared service, not this HTTP layer.
+#
+# Accepted decisions and limits
+# -----------------------------
+# The objective is post-tax NPV. Cases can be included/excluded, with
+# mandatory/excluded ID lists for user controls. Constraint rows describe
+# Capex or production, total or each-year basis, an inclusive year window,
+# a minimum/maximum target and a flexibility percentage from 0 to 15.
+# Zero flexibility is strict. Zero targets cannot use percentage relaxation.
+# Constraint periods can differ from the objective period.
+#
+# What the request models check
+# -----------------------------
+# Supported literal choices, finite bounded numbers, whole model years,
+# ordered year ranges, unique constraint IDs, and nonduplicated/nonoverlapping
+# case-control lists. Extra fields are forbidden. These checks run before
+# constructing the plain domain dataclasses consumed by the service.
+# Valid field types alone do not prove a feasible portfolio exists.
+#
+# Request lifecycle and errors
+# ----------------------------
+# A nonblocking process-local lock allows one solve through this router at
+# a time; another receives 409. The lock is released even if a solve fails.
+# ValueError becomes 422; unexpected errors are logged and returned as 500.
+# There is no background job queue, and the lock does not coordinate
+# separate backend worker processes.
+#
+# Reading the response
+# --------------------
+# Solver status distinguishes optimal, infeasible, unbounded, time limit
+# and solver error. Attempts record the relaxation search; constraint checks
+# compare achieved values with original/adjusted limits. Case records and
+# reconciliation fields explain the recommended portfolio. An HTTP success
+# alone does not mean the solver proved an optimal feasible selection.
+# The frontend separately confirms building a scenario from a recommendation.
+# For the algorithm and numerical examples, read the detailed header in
+# services/optimisation_service.py, then its optimise function.
+
 """Typed, bounded optimisation of the complete loaded reference portfolio."""
 from threading import Lock
 from typing import Literal

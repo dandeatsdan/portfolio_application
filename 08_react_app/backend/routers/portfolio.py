@@ -1,3 +1,53 @@
+# ========================================================================
+# PORTFOLIO REPORTING API — SHAPE THE REFERENCE DATA FOR VISUALS
+# ========================================================================
+#
+# Purpose and data flow
+# ---------------------
+# React Portfolio Viewer -> these endpoints -> loaded app_state tables
+#   -> case/year filtering -> aggregation/valuation -> JSON for the visual.
+# The baseline is already financialised. Viewing a different slice does
+# not apply scenario operations or rerun the optimiser.
+#
+# Common building blocks
+# ----------------------
+# _filter_cases applies the selected descriptive dimensions to the listing.
+# _filter_profiles uses the remaining IDs and an inclusive valid year range.
+# _safe_records converts unavailable/non-finite values to JSON nulls.
+# These helpers keep each endpoint's scope and serialisation consistent.
+#
+# Measures and charts
+# -------------------
+# The KPI endpoint sums the selected years and divides by their count for
+# an annual average. Stacked and ranked endpoints group the chosen metric
+# for chart series and contributors. NPV uses valuation_service.npv_by_case
+# on true signed Post-Tax Cash Flow, with its fixed 2026 period-1 origin.
+# The reference_measure endpoint supplies values keyed by stable case ID
+# for reference columns elsewhere in React.
+#
+# The creaming curve
+# ------------------
+# Calculate NPV and Capex per case, aggregate to the chosen dimension,
+# then order by NPV/Capex (PI) descending. Running sums give cumulative
+# Capex on x and cumulative NPV on y. Cases without Capex in the selected
+# window remain in the valued set; their NPV must not disappear.
+# Zero Capex gives an undefined ratio, rather than division by zero.
+# This differs from the older single-metric creaming_curve service helper.
+#
+# Signs and units require care
+# ----------------------------
+# Chart/reporting paths use the metrics-helper inversion where implemented,
+# while NPV always starts from analytical cash flows. entity_summary returns
+# raw Capex/FCF totals for its caller to present; do not apply inversion
+# twice when consuming those records.
+# Cumulative production uses 0.36525 to convert summed annual mboed rates
+# to mmboe. Annual/average values retain daily-rate units. Read the specific
+# endpoint for its period-total versus annual presentation convention.
+# NPV is a period value, not an annual average.
+#
+# To trace one visual, start at its route decorator, follow the filters,
+# then its grouping/valuation and final returned fields.
+
 """
 Portfolio endpoints — KPIs, stacked chart data, rankings, creaming curve.
 """

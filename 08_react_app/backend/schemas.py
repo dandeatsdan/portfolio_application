@@ -1,3 +1,34 @@
+# ========================================================================
+# API DATA MODELS — THE SHAPES OF REQUESTS AND RESPONSES
+# ========================================================================
+#
+# These Pydantic models describe the JSON exchanged between React and the
+# Python API. Fields specify names, types, defaults and selected constraints.
+# They are not database tables and do not calculate portfolio results.
+#
+# The main families below cover case/operation metadata, portfolio chart
+# records, scenario instructions and runs, annual profile rows, waterfall
+# requests and valuation requests/responses. ScenarioInstruction carries
+# one case's include flag, operation and five numeric parameter slots.
+# ProfileRow represents one case/metric/year observation, with optional
+# scenario/operation metadata. A run response contains many such rows.
+#
+# Validation is split by responsibility
+# ------------------------------------
+# A declared Pydantic model checks a request when FastAPI uses that model
+# for the endpoint. Finite-number and range constraints catch invalid
+# values at that boundary. operation_validation.py adds rules whose meaning
+# depends on the selected operation; the engine checks calculation inputs.
+# A model declaration alone does not enforce rules on unrelated untyped
+# endpoint dictionaries or on direct calls into the shared Python services.
+#
+# Financial profile values in scenario responses keep their analytical
+# signs. Reporting endpoints can format separate display copies later.
+# Saved JSON definitions have their own models in saved_scenario_models.py;
+# the optimiser request/response models are in routers/optimisation.py.
+# When tracing a field, find the router that uses its model, then follow
+# that router's conversion from JSON fields into pandas DataFrame columns.
+
 """
 Pydantic response schemas for the FastAPI backend.
 

@@ -1,3 +1,64 @@
+# ========================================================================
+# PORTFOLIO SERVICE — SUMMARISE THE REFERENCE DATA
+# ========================================================================
+#
+# Purpose
+# -------
+# Provide reusable table operations for portfolio totals, annual profiles
+# and rankings. These functions aggregate existing values; they do not
+# choose projects, apply scenario operations or calculate an NPV.
+#
+# Data layout
+# -----------
+# profiles is a tall table: ID, Case, Metric, Year, Value. A case therefore
+# has many rows. case_listing supplies the case scope and display labels.
+# totals_avgs is a separate wide reference table with year columns and
+# precomputed Total 5Y / Average 5Y columns.
+#
+# Which function to read
+# ----------------------
+# - add_derived_totals: rebuild the derived post-tax metrics in the wide
+#   table from calculated profiles for the fixed 2026–2030 window.
+#   Missing years are zero; Average 5Y is always Total 5Y divided by five.
+#   Other reference metrics in the supplied totals table are retained.
+# - aggregate_by_year: restrict to the supplied case listing and metric,
+#   then sum all contributing cases for each year.
+# - stacked_by_case: return Year / Case Name / Value rows suitable for a
+#   chart. The output remains tall; it is not a pivoted spreadsheet.
+# - rank_contributors: total a metric over the requested years, group by
+#   Case Name and sort from largest to smallest.
+# - creaming_curve: take that ranking and add a running cumulative total.
+# - portfolio_kpis: read and sum a chosen aggregation column from the wide
+#   totals table, scoped by the case listing's Case labels.
+#
+# Example of aggregation
+# ----------------------
+# If two cases have metric values 10 and 20 in 2027, aggregate_by_year
+# returns 30 for 2027. A stacked view retains the two case contributions.
+# These sums preserve the units and signs of the supplied values.
+#
+# Distinctions worth understanding
+# -------------------------------
+# The simple creaming_curve helper here accumulates ONE ranked metric.
+# The React portfolio endpoint builds a different curve: cumulative NPV
+# against cumulative Capex, ordered by NPV/Capex. Read
+# backend/routers/portfolio.py for that implementation.
+#
+# portfolio_kpis reads totals_avgs, not its currently unused profiles
+# argument. Its default five-year total is not a dynamic 2026–2040 total.
+# The React portfolio KPI endpoint computes its selected-window totals
+# separately from profiles.
+#
+# rank_contributors groups by display Case Name, so equal names combine.
+# An empty selected_ids list in stacked_by_case, or an empty years list in
+# rank_contributors, acts as no restriction. Callers needing an explicitly
+# empty result must handle that distinction.
+#
+# This module does not apply the metrics-helper Invert flag. Presentation
+# callers must supply appropriately formatted values or format afterwards.
+# For fresh post-tax metrics, start with engine/financials.py; for NPV,
+# use valuation_service.py rather than summing an NPV source column.
+
 """
 Portfolio aggregation services.
 

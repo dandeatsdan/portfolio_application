@@ -1,3 +1,52 @@
+# ========================================================================
+# RESULTS ANALYSIS API — FILTER CALCULATED RESULTS FOR THE SCREEN
+# ========================================================================
+#
+# Purpose
+# -------
+# Build result cards, profiles, waterfalls and case-impact tables from
+# baseline/scenario rows supplied by React, optionally with a comparison.
+# This endpoint does not call the scenario operation engine. Changing a
+# visual filter still makes an analysis request, but it does not repeat the
+# scenario run or recalculate country/year tax on the whole portfolio.
+#
+# Request controls
+# ----------------
+# The request selects an analysis kind, metric, grouping, inclusive years,
+# optional case IDs, total/average basis and discount rate. Missing case_ids
+# means no ID restriction; an explicit empty list means no selected cases.
+# The models check supported kinds and year order. NPV is supported for
+# period-total impact analysis, not as an annual average profile metric.
+#
+# Four result shapes
+# ------------------
+# kpis: selected-period portfolio measures and their changes.
+# profile: annual reference/scenario/comparison series across the range.
+# waterfall: reference total, grouped changes and scenario total.
+# impact: reference/scenario/delta values for individual case IDs.
+# Most paths filter and group copies of supplied rows. The NPV impact path
+# instead passes raw signed cash flows to valuation_service.npv_by_case.
+#
+# Presentation conventions
+# ------------------------
+# Ordinary reporting values use the metrics-helper inversion on copies.
+# Cumulative production uses the 0.36525 conversion from summed annual
+# mboed rates to mmboe; annual/average production retains daily-rate units.
+# Headline financial values can be scaled from $m to $bn. Unit selection
+# belongs to the result shape, so read the relevant helper before comparing
+# an annual chart number with a cumulative card.
+#
+# Delta is Scenario minus Baseline. KPI percentage changes divide by the
+# absolute baseline and are absent when the baseline is zero. This avoids
+# claiming a percentage improvement from a zero starting value. It differs
+# from the older signed-denominator helper in comparison_service.py.
+#
+# The reference case listing supplies grouping labels; these functions do
+# not change the scenario's inclusion settings. Filtered-out rows remain
+# part of the original run held by the caller.
+# Read frame and unit first, then the requested analysis kind;
+# read scenario.py for where the original annual results come from.
+
 """Display-facing Results analysis. Raw model values are never modified."""
 from typing import Literal
 import pandas as pd

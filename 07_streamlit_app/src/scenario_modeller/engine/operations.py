@@ -1,3 +1,67 @@
+# ========================================================================
+# OPERATIONS LIBRARY — HOW A CASE'S ANNUAL PROFILE IS CHANGED
+# ========================================================================
+#
+# Purpose
+# -------
+# Each apply_* function implements one scenario operation. It receives
+# one case's tall profile table and returns a transformed copy. Param1–5
+# are positional instruction slots, whose meanings depend on the operation.
+# The operation_functions mapping at the bottom connects internal names
+# to Python functions; scenario_engine.py uses it to dispatch each row.
+#
+# How to navigate this file
+# -------------------------
+# - NoChange simply copies the reference profile.
+# - Delay / Accelerate move years later / earlier and clip the affected
+#   end of the model horizon. Optional helpers book the associated cash
+#   cost penalty or incremental Capex in the specified year.
+# - Increase / Dilution scale the selected ownership-related profile
+#   window and optionally book a farm-in payment / disposal proceeds.
+# - TruncateBefore / TruncateAfter retain rows on the permitted side of
+#   an inclusive cutoff year.
+# - Production, OPEX and CAPEX percentage adjustments change the relevant
+#   metrics over a year window and update their affected financial lines.
+# - Absolute OPEX / CAPEX adjustments book cash changes in specified years.
+# Read the metric lists inside each function to see exactly which lines
+# are affected; the operations do not all change the same set of metrics.
+#
+# Understanding parameters through examples
+# -----------------------------------------
+# A Delay of 2 moves a 2026 row to 2028. Rows moved beyond the horizon
+# are removed, so the remaining lifetime total can change.
+# A farm-down fraction of 0.10 scales the chosen window by 0.90. It means
+# reduce by 10%, rather than set ownership to 10%. The UI accepts a positive
+# fraction for this reduction; the function supplies the reducing effect.
+# For year-window parameters that support it, zero means use default bounds.
+# Read each signature/body before interpreting a particular parameter slot.
+#
+# Cash signs
+# ----------
+# A positive payment amount is converted into an outflow by its helper;
+# positive disposal proceeds become an inflow. Absolute cost adjustments
+# can have either sign. These are analytical cash-flow effects, separate
+# from the metrics-helper inversion used to make costs positive on charts.
+# The API's operation_validation.py documents and enforces the input rules.
+# Some defensive checks also live here, but they are not a complete
+# replacement for the API's field-specific validation.
+#
+# Why some helpers create rows
+# ----------------------------
+# A one-off transaction may fall in a year without an existing metric row.
+# Helpers can create the necessary row using case metadata before applying
+# the cash change. The exact template and missing-metric checks vary by
+# helper. This keeps a booking from disappearing merely because there was
+# no original cash-flow row in that year.
+#
+# What happens afterwards
+# -----------------------
+# The dispatcher combines the transformed cases. scenario_service then
+# calls financials.calculate_post_tax to derive tax/post-tax values afresh.
+# These functions do not save a scenario, call a solver, or format charts.
+# For the overall flow, read scenario_service.py; for accepted inputs and
+# warnings, read backend/operation_validation.py and the validation matrix.
+
 """
 Scenario operation functions.
 

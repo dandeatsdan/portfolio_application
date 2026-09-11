@@ -1,3 +1,261 @@
+# ============================================================
+# PORTFOLIO OPTIMISER — REFERENCE-CASE SELECTION
+# ============================================================
+#
+# Purpose
+# -------
+# Answer the business question:
+#   "Which cases should we include to achieve the highest post-tax
+#    NPV while staying within the specified portfolio limits?"
+#
+# The ordinary scenario engine evaluates decisions supplied by the
+# user. This optimiser chooses include/exclude decisions, then checks
+# its recommendation using that same scenario engine.
+#
+# It uses the loaded reference profiles. It does not optimise delays,
+# acceleration, ownership percentages or other operation parameters.
+# All cases may run concurrently. Mandatory cases must be included;
+# excluded cases must stay out. There are no project-dependency or
+# mutually exclusive alternative-case rules in this first version.
+#
+# Where this module fits
+# ----------------------
+# React Portfolio Optimiser page
+#   -> POST /api/optimisation/solve
+#   -> backend/routers/optimisation.py validates the request
+#   -> optimise(...) in THIS FILE coordinates the calculation
+#   -> response returns the recommendation and constraint checks
+#
+# The API validates years, metric names, targets and flexibility caps.
+# The shared domain/optimisation.py file defines the input dataclasses.
+# Those dataclasses hold settings; they do not validate API input.
+# Direct callers of this service must supply a valid specification.
+#
+# The optimiser returns data. It does not write JSON files, update
+# the working scenario or navigate the browser. React performs the
+# editable-scenario hand-off only when the user confirms it.
+#
+# Inputs to optimise(...)
+# -----------------------
+# profiles:
+#   Reference DataFrame already enriched with post-tax calculations.
+#   Important columns: ID, Metric, Year, Value. Values retain their
+#   analytical signs, rather than the signs used for presentation.
+#
+# raw_profiles:
+#   Source profiles used to replay the chosen cases through the
+#   scenario engine. That engine derives the post-tax values again.
+#
+# cases:
+#   Case-listing DataFrame: ID identifies the case; Case and Case Name
+#   supply labels. Financial processing also uses its country mapping.
+#
+# tax_rates:
+#   Existing tax assumptions passed to the scenario engine for replay.
+#   This module does not implement a separate tax calculation.
+#
+# spec (OptimisationSpec):
+#   - year_from / year_to: period used for the NPV objective and cards;
+#   - constraints: each has its own metric, period, rule and target;
+#   - mandatory_case_ids: cases fixed as included;
+#   - excluded_case_ids: cases fixed as excluded.
+#   A constraint period can differ from the NPV objective period.
+#
+# time_limit:
+#   Default 30 seconds for the sequence of solver attempts. Preparation
+#   consumes part of that elapsed-time budget. Each attempt receives
+#   the remaining time. Final replay/verification is additional work;
+#   this is not a hard 30-second deadline for the entire HTTP response.
+#
+# The mathematical model, in plain language
+# -----------------------------------------
+# Each case i receives a binary decision variable, x[i]:
+#   x[i] = 1 means include the whole reference case.
+#   x[i] = 0 means exclude it.
+# A binary variable cannot mean "include 40% of the case".
+#
+# A COEFFICIENT is simply a precomputed contribution from one case:
+# its NPV, its Capex in a given period, or its production in that period.
+# Multiplying a coefficient by x[i] either keeps it or makes it zero.
+# Summing those products gives the total for the selected portfolio.
+#
+# Objective: maximise sum(NPV[i] * x[i]).
+# Budget:    sum(Capex[i] * x[i]) <= maximum spending target.
+# Output:    sum(Production[i] * x[i]) >= minimum production target.
+# The interface also permits minimum Capex and maximum production.
+# Mandatory/excluded cases add x[i] == 1 / x[i] == 0 constraints.
+#
+# This is a binary mixed-integer linear programming (MILP) model:
+# "linear" means we add fixed contributions multiplied by decisions;
+# "integer" means the decisions take discrete values (here, 0 or 1).
+# PuLP expresses the model as Python objects. HiGHS solves it through
+# highspy. We do not explicitly loop through every possible portfolio
+# or simply take cases in descending order of their individual NPV.
+#
+# Small worked example (illustrative, not the loaded sample data)
+# -------------------------------------------------------------
+#                 NPV ($m)    Capex ($m)    Production (mmboe)
+#   Case A             8             6                     8
+#   Case B             7             5                     9
+#   Case C             5             4                     6
+#
+# Suppose the budget is 10 and the production minimum is 12.
+# A + B fails the budget: 6 + 5 = 11.
+# A + C meets both limits: Capex 10, production 14, NPV 13.
+# B + C also meets both:   Capex 9, production 15, NPV 12.
+# The NPV objective therefore chooses A + C, even though B + C
+# produces more. Production is a constraint in this example, not an
+# additional objective. The NPV figures above are already discounted.
+#
+# Signs, periods and units — especially important here
+# ----------------------------------------------------
+# NPV:
+#   Reuse npv_by_case(...), at the existing 8% discount rate.
+#   Annual post-tax cash flow in year y is discounted by
+#   (1.08 ** (y - 2026 + 1)). Selecting later years does not restart
+#   that clock. Negative-NPV cases are allowed; another constraint
+#   may make their inclusion necessary. No NPV display inversion.
+#
+# Cash Capex:
+#   Budget coefficients = NEGATIVE of summed analytical Cash Capex.
+#   Raw -100 becomes +100 of expenditure, measured in $m.
+#   Raw +19 becomes -19 of expenditure, offsetting other spending.
+#   This is signed NET Capex, consistent with the existing reports.
+#   Never use abs() or clip negative expenditure to zero: either would
+#   change the budget meaning. Source profiles are not modified.
+#
+# Production:
+#   Annual profiles are in mboed. A total-across-period constraint
+#   sums the annual values and multiplies by 0.36525 to obtain mmboe.
+#   This uses the existing application's annual conversion convention.
+#   An every-year constraint uses each year's mboed value directly.
+#
+# "Total across period" creates ONE inequality for the whole period.
+# "In every year" creates a SEPARATE inequality for EACH year. Thus,
+# a $1,000m maximum in every year 2026-2028 is three annual limits;
+# it is not a single $1,000m limit shared across all three years.
+#
+# Missing years within an available case/metric contribute zero,
+# matching the existing reports. A completely missing required metric
+# for a case, duplicate profile keys or non-finite values are errors.
+#
+# Processing flow and the functions to read
+# ------------------------------------------
+# 1. optimise(...) starts the elapsed-time clock and calls
+#    prepare_coefficients(...). This prepares the case IDs, objective
+#    coefficients, expanded constraints and headline contributions.
+#
+# 2. solve_attempt(...) constructs one PuLP model for the current
+#    flexibility step and asks HiGHS to maximise its NPV objective.
+#    These attempts reuse prepared financial coefficients; they do
+#    not repeatedly rerun financialisation for each possible selection.
+#
+# 3. If HiGHS proves the limits infeasible, optimise(...) may try the
+#    next permitted flexibility step, using adjusted_target(...).
+#    Time limits and errors stop the search instead of relaxing rules.
+#
+# 4. Once an optimal selection is found, constraint_checks(...) sums
+#    its case contributions independently and checks the limits again.
+#    The mandatory/excluded case rules are also checked independently.
+#
+# 5. A nonempty selection is converted into included NoChange
+#    instructions and replayed through execute_scenario(...).
+#    Its per-case NPV, constraint coefficients and headline values
+#    must agree with those used for optimisation. This checks that
+#    the recommendation will mean the same thing in the scenario app.
+#
+# 6. Return the selected/excluded IDs, portfolio values, case table,
+#    constraint checks, attempt history and elapsed time.
+#
+# Flexibility is a feasibility fallback, not an NPV booster
+# --------------------------------------------------------
+# Step 0 always uses the original limits. A feasible optimum at step 0
+# is accepted, even if relaxing the budget could achieve higher NPV.
+#
+# After proven infeasibility, steps 1, 2, ... widen only the limits
+# explicitly given flexibility. Each constraint stops at its OWN cap:
+#   allowance = min(current step, constraint flexibility cap) / 100
+#   maximum target -> original target * (1 + allowance)
+#   minimum target -> original target * (1 - allowance)
+#
+# Example: maximum spending 100 with a 15% cap can become 101, 102,
+# ... 115. Minimum production 100 can become 99, 98, ... 85.
+# Changes are measured from the ORIGINAL target, not compounded.
+# A strict constraint has a zero cap and never moves. Case controls
+# also stay strict. The API limits flexibility to 15% and requires
+# zero targets to remain strict.
+#
+# All flexible constraints advance together, subject to their caps.
+# Stop at the first step for which an optimal feasible selection is
+# established. This policy does not minimise the sum of all breaches
+# or choose which individual constraint is commercially best to relax.
+# Those would be different optimisation policies.
+#
+# Result meanings and publication rules
+# --------------------------------------
+# status = optimal:
+#   HiGHS reported an optimum for the limits used in that attempt.
+#   With flexibility, that means the ADJUSTED limits, not necessarily
+#   the original ones. Equal-value portfolios can have different case
+#   combinations; an optimal result need not be a unique result.
+#
+# status = infeasible:
+#   No selection met the limits at the attempted flexibility levels.
+#
+# status = time_limit / solver_error / unbounded:
+#   No recommendation is published. A timeout is not proof of
+#   infeasibility. An unbounded result is unexpected with finite
+#   coefficients and binary decisions, so it also withholds output.
+#
+# We inspect the HiGHS model status directly: PuLP can label a
+# time-limited candidate "optimal" even without proof of optimality.
+# gapRel=0 and gapAbs=0 request no deliberate objective-gap allowance;
+# ordinary numerical tolerances still apply to floating-point values.
+# Those tiny numerical tolerances are distinct from business flexibility.
+#
+# original_satisfied checks the user's original target.
+# satisfied checks the adjusted target used in the solve.
+# headroom is the distance from the adjusted limit in the metric's units.
+# allowed_pct is the permitted widening at that step; breach_pct is
+# the ACTUAL breach of the original target. They need not be equal.
+#
+# reconciled=True means the nonempty selection passed scenario replay.
+# It does not mean the model has been independently business validated.
+# An empty portfolio can be mathematically optimal (for example, when
+# every case has negative NPV and none is required). It is reported,
+# but cannot be handed to the current scenario engine, which requires
+# an included case. It therefore keeps reconciled=False.
+#
+# A validation or replay mismatch raises ValueError; the API turns
+# that into an error response rather than publishing a recommendation.
+#
+# Relationship to Build a Scenario
+# --------------------------------
+# The frontend deliberately keeps recommended cases INCLUDED at their
+# reference profiles under Available cases. Optimiser exclusions go
+# into Shortlisted cases with include=False, making those departures
+# from the reference portfolio explicit and editable.
+# Shortlisted therefore does not mean included. A recommendation of
+# 3 included and 9 excluded cases creates 9 shortlisted exclusions.
+# The transition dialog explains this before replacing the working copy.
+#
+# Useful companion files
+# -----------------------
+# domain/optimisation.py                 Input dataclasses.
+# services/valuation_service.py          Shared NPV calculation.
+# services/scenario_service.py           Normal scenario execution.
+# 08_react_app/backend/routers/optimisation.py
+#                                       API validation and solve lock.
+# 08_react_app/backend/tests/test_optimisation.py
+#                                       Worked portfolios, brute-force
+#                                       checks, flexibility and replay tests.
+# 08_react_app/frontend/src/pages/optimiserHelpers.js
+#                                       Editable-scenario hand-off.
+#
+# Suggested reading order: optimise -> prepare_coefficients ->
+# solve_attempt -> adjusted_target -> constraint_checks.
+# ============================================================
+
 """Binary reference-case selection. Financialisation stays in existing services."""
 from time import monotonic
 import math

@@ -1,3 +1,46 @@
+# ========================================================================
+# SCENARIO API — VALIDATE, RUN AND RETURN THE WORKING SCENARIO
+# ========================================================================
+#
+# Main execution path
+# -------------------
+# React sends instructions -> Pydantic request validation -> operation
+# business checks -> instruction DataFrame -> execute_scenario service
+# -> transformed/post-tax profiles -> JSON response to React.
+# User-facing operation labels are translated to internal engine keys,
+# and case labels are restored using stable IDs from the reference listing.
+#
+# Why there are several validation stages
+# --------------------------------------
+# The request model checks field types and finite numbers. The operation
+# validator knows rules such as valid year pairs and allowable fractions.
+# The service checks case identity and calculation integrity. Errors block
+# the run; allowed consequences such as clipped years return as warnings.
+# Unexpected execution failures are logged and returned as server errors.
+#
+# What the run returns
+# --------------------
+# A successful response contains annual scenario rows, reference baseline
+# rows, instruction metadata, diagnostics and valuation-basis information.
+# The service's cleaned included instructions are combined with exclusions
+# for the response. Output profile values retain their analytical signs.
+# These rows allow later visual filtering without replaying operations.
+#
+# Saving is a separate action
+# ---------------------------
+# The frontend's Save and run workflow saves a definition then requests a
+# run. This run endpoint does not itself write a JSON scenario file.
+# Read routers/saved_scenarios.py to follow persistence.
+#
+# Other routes in this module
+# ---------------------------
+# Validation can be requested without running. Supporting waterfall,
+# valuation and KPI-delta routes analyse supplied data: waterfalls use
+# display copies and the shared comparison helper; valuation uses the
+# shared fixed-origin NPV calculation. The newer results screen's combined
+# analysis workflow is in routers/results_analysis.py.
+# For the calculation itself, continue in services/scenario_service.py.
+
 """
 Scenario endpoints — run a scenario and compute comparison/waterfall data.
 """

@@ -1,3 +1,60 @@
+# ========================================================================
+# FINANCIALISATION — DERIVE POST-TAX METRICS FROM SOURCE PROFILES
+# ========================================================================
+#
+# Purpose
+# -------
+# Calculate tax and post-tax profit/cash flow after scenario operations
+# have changed the source profiles. The same functions also prepare the
+# reference baseline, keeping both sides of a comparison consistent.
+#
+# Inputs and identity
+# -------------------
+# profiles contains ID, Case, Metric, Year and Value, with optional Scenario.
+# case_listing maps each ID to a Country Key. tax_rates supplies each
+# country/year's ETR (effective tax rate) and CTR (cash tax rate).
+# Rates are fractions: 0.30 means 30%. Cash values retain their source units.
+#
+# Calculation in plain language
+# -----------------------------
+# For each case/year's Underlying RCOP:
+#   taxable amount = max(Underlying RCOP, 0)
+#   tax charge = taxable amount * ETR
+#   cash tax = taxable amount * CTR
+#   Post-Tax RCOP = Underlying RCOP - tax charge
+#   Post-Tax Cash Flow = Pre Tax Cash Flow - cash tax
+# Tax Charge and Cash Tax Payment are also appended as negative outflows.
+# For RCOP=100, pre-tax cash flow=80, ETR=30% and CTR=20%, the resulting
+# post-tax RCOP is 70 and post-tax cash flow is 60.
+# Negative RCOP produces zero tax here; this is not a loss-carry-forward
+# model. The code applies the supplied country/year rates to each case.
+#
+# Why source_profiles comes first
+# ------------------------------
+# Previously derived tax/post-tax rows and the Excel discounted metric are
+# removed before recalculation. Otherwise stale derived values could be
+# mixed with new ones or transformed twice. calculate_post_tax returns
+# source rows plus freshly derived metrics and a list of diagnostics.
+#
+# Validation and missing rows
+# ---------------------------
+# Required identities, integer years, finite values, horizon bounds and
+# unique case/metric/year rows are checked. Country mappings and tax-rate
+# joins must be unambiguous; missing required mappings/rates cause errors.
+# When a pre-tax cash-flow row has no matching RCOP row, cash tax is treated
+# as zero and a diagnostic records that specific convention. This exception
+# does not mean all missing financial inputs are silently accepted.
+#
+# Keep financial signs separate from display signs
+# ------------------------------------------------
+# Expenses and outflows keep their analytical signs here. The metrics-helper
+# CSV can reverse signs later for tables/charts, without changing these
+# calculations. NPV is calculated separately in valuation_service.py from
+# the resulting true signed Post-Tax Cash Flow.
+#
+# Read source_profiles first, then calculate_post_tax, paying particular
+# attention to the join keys and the final derived-row construction.
+
 """Shared baseline/scenario post-tax stage, derived from Excel 005_model_engine.
 
 Values retain analytical signs. Display inversion is a separate concern.

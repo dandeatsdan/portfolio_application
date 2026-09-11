@@ -1,3 +1,24 @@
+# ========================================================================
+# STREAMLIT SCENARIO STATE — THE OLDER UI'S WORKING CONFIGURATION
+# ========================================================================
+#
+# This module belongs to the Streamlit interface. It is separate from
+# React's frontend state and the FastAPI JSON scenario repository.
+# It keeps editable scenario definitions in st.session_state for the
+# current Streamlit session; it does not provide durable file storage.
+#
+# init_scenario_state creates a scenario only when it does not already
+# exist. Cases begin included with No Change and five zero parameters.
+# apply_editor_changes copies editable table values back into that state.
+# get_scenario_instructions walks the case listing and builds the tall
+# instruction DataFrame expected by the shared engine, translating visible
+# operation labels through OPERATION_MAP.
+#
+# The helpers import Streamlit inside their functions. Calls that access
+# session state still require a Streamlit session; this is not the React
+# API's storage mechanism. To follow the newer UI, read backend/state.py
+# for reference data and backend/scenario_repository.py for saved JSON.
+
 """
 Scenario session-state helpers.
 

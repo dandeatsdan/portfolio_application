@@ -1,3 +1,51 @@
+# ========================================================================
+# DATA LOADERS — CSV FILES INTO THE TABLES USED BY PYTHON
+# ========================================================================
+#
+# Purpose and flow
+# ----------------
+# Read reference CSV files into pandas DataFrames (tables in memory),
+# normalise column names and apply the dataset-specific checks below.
+# backend/state.py calls these loaders when the React API starts.
+# The loaders do not run a scenario or apply presentation sign inversion.
+#
+# The main datasets
+# -----------------
+# - Case listing: identities and descriptive dimensions; ID must be unique.
+# - Profiles: tall rows with ID, Case, Metric, Year, Value. Each
+#   ID / Metric / Year combination must occur at most once.
+# - Tax rates: Country Key / Year with ETR and CTR fractions in [0, 1].
+#   The country/year key must be unique.
+# - Operations library: operation descriptions and labelled input slots.
+# - Totals/averages: a wide table containing year and aggregation columns.
+# Required column lists are defined in data/schemas.py.
+#
+# Cleaning is specific to each loader
+# ----------------------------------
+# The core loaders remove surrounding whitespace and DAX-style column
+# brackets, and the case/profile loaders accept Index as an alias for ID.
+# The case loader drops rows with nonnumeric IDs before converting to int.
+# The profile loader coerces invalid/blank Values to zero and resets tiny
+# absolute values below TOLERANCE to zero. That is a deliberate existing
+# input convention, not evidence that the original CSV contained a zero.
+# The operations and totals loaders are lighter wrappers; they do not
+# perform all the checks used by the profile or tax loaders.
+# Financialisation adds further identity, finite-value and horizon checks.
+#
+# Helper functions
+# ----------------
+# get_param_spec reads active labels and Required flags from the operations
+# CSV, skipping empty/n/a slots. It supplies form metadata, not all the
+# business validation rules for an operation.
+# lookup_value finds a Case/Metric row and reads a requested year or total,
+# returning None when no value is available. It resembles an Excel lookup.
+# validate_tax_rates also accepts an in-memory table, allowing callers to
+# apply the same country/year/rate checks without reading another file.
+#
+# When investigating unexpected values, start with the CSV, then these
+# cleaning steps, then engine/financials.py. A successful CSV read alone
+# does not establish that the complete portfolio can be financialised.
+
 """
 CSV loaders for the three core input datasets.
 

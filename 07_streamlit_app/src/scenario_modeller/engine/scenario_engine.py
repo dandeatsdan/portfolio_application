@@ -1,3 +1,50 @@
+# ========================================================================
+# SCENARIO DISPATCHER — APPLY ONE INSTRUCTION TO EACH CASE PROFILE
+# ========================================================================
+#
+# Purpose and position
+# --------------------
+# This is the loop between cleaned scenario instructions and the individual
+# operation functions. The usual entry point for a complete calculation is
+# services/scenario_service.execute_scenario, which calls this dispatcher
+# and then handles post-tax calculations and success/failure checks.
+#
+# What run_scenario does
+# ----------------------
+# 1. Iterate over instruction rows; skip those marked Include=False.
+# 2. Find the source rows belonging to the instruction's case ID.
+# 3. Look up the internal operation key in operation_functions.
+# 4. Pass that case's profile and Param1–Param5 to the operation function.
+# 5. Keep output years within YEAR_MIN–YEAR_MAX.
+# 6. Attach Scenario, operation, parameters and a shared run timestamp.
+# 7. Concatenate the successful case outputs into one result DataFrame.
+#
+# Example
+# -------
+# An instruction with Operation=Delay and Param1=2 passes that case's
+# annual data to apply_delay. Another case with NoChange gets a copy of
+# its reference rows. Their outputs are combined; one case's transformed
+# rows are not used as the next case's input.
+#
+# Understanding the output
+# ------------------------
+# The result has a fixed column order including ID, Case, Metric, Year,
+# Value and instruction metadata. If nothing succeeds, the result is empty
+# but still has the expected columns. Errors are returned separately.
+# A missing case, unknown operation or failing operation adds an error;
+# the loop continues, so a result may contain partial output AND errors.
+# The coordinating service rejects such a run rather than treating those
+# partial rows as a complete portfolio.
+#
+# Boundaries
+# ----------
+# This module does not save scenarios, calculate tax, discount cash flows
+# or invert values for presentation. It also does not replace the API's
+# parameter validation. It dispatches one operation per instruction;
+# multiple rows are not an implicit sequential chain of case operations.
+# Read operations.py for the transformations and scenario_service.py for
+# how errors and financialisation are handled around this loop.
+
 """
 Scenario engine orchestration.
 

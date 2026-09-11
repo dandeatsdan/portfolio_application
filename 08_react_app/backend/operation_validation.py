@@ -1,3 +1,54 @@
+# ========================================================================
+# OPERATION INPUT VALIDATION — ERRORS THAT BLOCK, WARNINGS THAT INFORM
+# ========================================================================
+#
+# Purpose
+# -------
+# Check React scenario instructions before the shared engine runs. The same
+# rules also help validate saved definitions. OPERATION_MAP connects labels
+# such as Farm Down (Dilution) to internal keys such as Dilution.
+# The validation matrix Markdown explains the agreed business decisions;
+# this Python function is one place where those decisions are enforced.
+#
+# How to read validate_operations
+# -------------------------------
+# Excluded instructions are skipped. Included instructions are checked for
+# recognised operations, required fields, unused slots, profile existence
+# and the operation-specific ranges below. The function returns two lists:
+# errors block the action; warnings explain an allowed consequence.
+# Each message includes case/operation context and, when relevant, a
+# parameter position or booking year for the frontend to associate it with.
+#
+# Rules grouped by operation family
+# --------------------------------
+# - Timing: zero or positive whole years; optional positive cost/year pair.
+# - Farm-in/down: nonnegative fractions; farm-down is capped at 1 (100%).
+#   Optional window bounds and a positive transaction amount/year pair.
+# - Percentage adjustments: fractions no lower than -1 (-100%), with no
+#   positive upper cap. Optional start/end years must be in order.
+# - Truncation: a whole cutoff year within the modelling horizon.
+# - Absolute OPEX/CAPEX: a required nonzero signed amount and valid year,
+#   plus an optional second amount/year pair. Both amount signs are allowed.
+# An optional unused pair is represented by zero amount AND zero year.
+# A default year of zero is only valid in slots that explicitly allow it.
+#
+# Examples of warnings, not errors
+# --------------------------------
+# A delay can shift some or all years outside the horizon; truncation can
+# remove an entire profile. Those consequences are allowed and explained.
+# An absolute adjustment can also turn a cost into a positive inflow. When
+# checking that warning, bookings in the same year are combined first.
+# Warnings are evaluated after the instruction passes its field checks.
+#
+# Validation layers
+# -----------------
+# Pydantic request models handle types and finite numeric values before
+# this function. scenario_service performs additional structural checks,
+# and individual operations retain their defensive checks. No profile
+# values are changed here and no scenario is executed.
+# For the actual cash effects, follow engine/operations.py. For the visible
+# messages and request handling, follow routers/scenario.py.
+
 """React input checks and warnings; shared analytical operations stay unchanged."""
 from scenario_modeller.data.schemas import YEAR_MIN, YEAR_MAX
 

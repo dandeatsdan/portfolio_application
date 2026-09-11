@@ -1,3 +1,36 @@
+# ========================================================================
+# SAVED SCENARIOS API — CONNECT THE SAVED-SCENARIOS PANE TO JSON FILES
+# ========================================================================
+#
+# The list/get/create/update/delete routes use ScenarioRepository for disk
+# access and saved_scenario_models for the versioned definition format.
+# SCENARIO_STORAGE_DIR can override the default app_data/scenarios folder.
+# The dependency getter lets tests substitute an isolated repository.
+#
+# Reading versus saving
+# ---------------------
+# An existing definition may refer to cases or operations that are no
+# longer valid against the loaded reference data. A view can return those
+# validation_errors so the user can inspect the definition. Creating or
+# updating a definition requires it to pass the current-data checks.
+# The checks translate saved settings into scenario instructions and reuse
+# validate_operations. Errors block saving; permitted warnings do not.
+#
+# HTTP outcomes
+# -------------
+# Successful creation returns 201; deletion returns 204 without a body.
+# Missing scenarios produce 404. Invalid stored files and stale update
+# conflicts produce 409. Storage failures are reported as 503, and invalid
+# submitted definitions as 422. The wrapper translates repository failures
+# into these API responses rather than exposing file operations to React.
+#
+# Updating requires the last-seen updated_at timestamp to prevent silently
+# overwriting a newer save. Delete removes the file; the app's confirmation
+# dialog belongs to the frontend. These endpoints do not calculate results,
+# and saving a definition does not preserve a history of run outputs.
+# Read scenario_repository.py for atomic writes and saved_scenario_models.py
+# for exactly which editable fields are persisted.
+
 """Save definitions independently of analytical execution."""
 import os
 from pathlib import Path

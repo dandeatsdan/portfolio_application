@@ -1,3 +1,48 @@
+# ========================================================================
+# SCENARIO REPOSITORY — DURABLE SAVING WITHOUT A DATABASE SERVER
+# ========================================================================
+#
+# Purpose
+# -------
+# Store each saved scenario definition in its own UUID-named JSON file.
+# The repository owns file operations; the router owns HTTP responses and
+# current-data business checks. Calculated results are not saved here.
+#
+# Basic operations
+# ----------------
+# create generates an ID and timestamps, then writes the definition.
+# get reads and validates the JSON and checks that its ID matches the file.
+# list returns newest-modified summaries and reports unreadable/invalid
+# entries separately, leaving the affected files in place.
+# update checks expected_updated_at before preserving the ID/creation time
+# and writing a new modified time and definition.
+# delete removes the scenario's file.
+#
+# Why saving uses a temporary file
+# -------------------------------
+# Writing directly over the original could leave half a JSON document if
+# writing fails. _write creates a temporary file in the same directory,
+# writes the complete JSON, flushes and fsyncs it, then uses os.replace to
+# replace the destination atomically. Temporary files are cleaned up.
+# This improves individual-file replacement; it is not a database-style
+# transaction across several files or a backup/version-history system.
+#
+# Avoiding stale updates
+# ----------------------
+# Suppose two screens open version A. The first saves version B. The second
+# still submits A's timestamp, so update raises ScenarioConflict instead
+# of silently replacing B. The caller can then tell the user to reopen.
+#
+# Concurrency and file safety
+# ---------------------------
+# The RLock serialises repository operations using this instance in one
+# process. It is not an inter-process file lock. UUID parsing determines
+# the filename, rather than using an arbitrary user-supplied path.
+# The storage directory is provided to this class by the caller; the API
+# router configures its default or environment override.
+# See saved_scenario_models.py for the file schema and the saved-scenarios
+# router for how missing files, conflicts and storage errors reach React.
+
 """Atomic JSON storage for the local, single-process prototype."""
 import json
 import os

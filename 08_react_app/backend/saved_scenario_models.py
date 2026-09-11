@@ -1,3 +1,41 @@
+# ========================================================================
+# SAVED SCENARIO MODELS — THE VERSIONED JSON DEFINITION
+# ========================================================================
+#
+# What is saved
+# -------------
+# A scenario definition stores the name, description, rationale, shortlist
+# and case configurations. Each configuration has an inclusion flag, an
+# operation and exactly five parameters. This is the editable recipe for
+# a run; it does not contain a historical snapshot of calculated results.
+#
+# Shortlist does not mean included portfolio
+# -----------------------------------------
+# In the React builder, cases are included at reference by default. The
+# shortlist records cases with explicit configurations/review entries,
+# including exclusions. Its IDs must be unique, and case_configs must have
+# exactly the corresponding ID keys. Removing an override restores the
+# builder's default behaviour; it does not necessarily remove a case from
+# the portfolio.
+#
+# How the models relate
+# ---------------------
+# CaseConfiguration validates a single case's saved settings.
+# ScenarioDefinition validates the editable, schema-versioned payload.
+# SavedScenario adds the UUID and creation/update timestamps.
+# UpdateScenario adds expected_updated_at for conflict detection.
+# Summary/list/view models support the saved-scenarios pane and report
+# stored definitions whose operation/case references need attention.
+#
+# Types and business validity
+# ---------------------------
+# Strict fields, finite numbers, forbidden extra fields and a supported
+# schema version protect the file format. The router separately checks
+# whether IDs and operations still match the currently loaded data.
+# expected_updated_at allows the repository to reject a stale overwrite.
+# Read scenario_repository.py for file writing, then routers/saved_scenarios.py
+# for current-data checks and HTTP error messages.
+
 """Versioned editable definitions. Results are deliberately not stored."""
 from datetime import datetime
 from typing import Literal, Annotated

@@ -1,3 +1,62 @@
+# ========================================================================
+# COMPARISON SERVICE — EXPLAIN THE DIFFERENCE BETWEEN TWO RESULTS
+# ========================================================================
+#
+# Purpose
+# -------
+# Compare already-calculated reference and scenario tables. These helpers
+# measure changes; they do not apply operations or run financialisation.
+# A DataFrame is a table in memory, and its columns are the matching keys
+# and measures used by the joins and aggregations below.
+#
+# Three useful entry points
+# -------------------------
+# compute_variance:
+#   Match rows by ID, Case, Metric and Year unless other keys are supplied.
+#   An outer join keeps rows present on either side. Missing values become
+#   zero, so excluded cases and newly created rows still contribute.
+#   Return Baseline, Scenario, Delta and Delta_pct for each matched row.
+#
+# scenario_kpi_delta:
+#   Restrict to the cases in case_listing and an optional year selection,
+#   then sum each requested metric for the reference and scenario.
+#   Return the total values and their absolute/percentage differences.
+#
+# build_waterfall:
+#   Select a metric and optional years, attach a requested case-listing
+#   dimension by ID, and calculate each group's change. Return a reference
+#   total, relative change bars, and a final scenario total.
+#
+# A small example
+# ---------------
+# Reference values of 100 and 50 become 120 and 0 after a change and an
+# exclusion. The changes are +20 and -50. The waterfall bridges the
+# reference total of 150 to the scenario total of 120.
+# A relative bar is a change from the running total; an absolute bar is
+# an endpoint. The chart renderer positions the bars from these records.
+#
+# Details that affect interpretation
+# ---------------------------------
+# Delta always means Scenario minus Baseline. The older percentage helpers
+# here divide by the signed baseline and return zero near a zero baseline.
+# The newer results_analysis API uses its own percentage convention, with
+# an absolute baseline denominator and no percentage for a zero baseline.
+# Do not assume the two percentage presentations are interchangeable.
+#
+# Waterfall grouping supports the dimensions in BREAKDOWN_COLUMNS. Missing
+# labels become Unassigned. Duplicate case-name labels are distinguished
+# by ID. Nonzero changes are sorted descending, with no Top N truncation.
+# For build_waterfall, an explicit empty year selection selects no years;
+# the older KPI helper treats an empty year list as no year restriction.
+#
+# Signs and related files
+# -----------------------
+# These functions compare the values supplied by the caller. They do not
+# invert costs themselves. Reporting callers may first use to_display;
+# analytical callers may supply raw signed values.
+# Read backend/routers/results_analysis.py for the React results workflow
+# and backend/utils/display.py for presentation-only sign changes.
+
 """
 Scenario comparison services.
 

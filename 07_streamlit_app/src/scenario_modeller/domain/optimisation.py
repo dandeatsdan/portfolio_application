@@ -1,3 +1,25 @@
+# ========================================================================
+# OPTIMISER DOMAIN RECORDS — THE SETTINGS PASSED TO THE SOLVER SERVICE
+# ========================================================================
+#
+# Constraint holds one rule: its identity, metric, aggregation basis,
+# inclusive year window, min/max operator, target and flexibility allowance.
+# OptimisationSpec collects those rules with the NPV objective's year
+# window and the mandatory/excluded case IDs.
+#
+# For example, a total Capex maximum over 2026–2028 is one limit on the
+# three-year sum. The each_year basis imposes a separate limit in each
+# year. A constraint's period can differ from the objective's period.
+# Zero flexibility means strict; positive flexibility permits the service
+# to relax that rule only within the allowed percentage cap.
+#
+# These frozen dataclasses are containers, not a solver or an API validator.
+# Frozen prevents reassignment of their fields after construction. Type
+# annotations alone do not check valid metrics, year ordering or targets.
+# backend/routers/optimisation.py validates HTTP input and builds these
+# records; services/optimisation_service.py interprets them mathematically.
+# Read those two files to follow a request from the screen into a solve.
+
 """Immutable inputs for reference-case portfolio selection."""
 from dataclasses import dataclass
 
