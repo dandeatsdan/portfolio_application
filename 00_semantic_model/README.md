@@ -1,8 +1,10 @@
 # Semantic Model
 
+> **Project status:** this directory documents the semantic-model layer of the original DT603 implementation. The later Streamlit and React applications are subsequent software-development explorations and do not replace or retrospectively alter this implementation.
+
 This folder contains the **working sanitised semantic model, supporting Power Query implementation and representative datasets** developed as the governed data layer of the Upstream Portfolio Scenario Modelling Framework.
 
-The semantic model provides the governed data layer supporting the Excel scenario modelling application. It prepares and integrates financial and production profiles, controlled manual inputs, Financial Entity reference data, modelling-case mappings, plan classifications and supporting tax assumptions before exposing purpose-specific datasets to the modeller.
+The semantic model prepares and integrates financial and production profiles, controlled manual inputs, Financial Entity reference data, modelling-case mappings, plan classifications and supporting tax assumptions before exposing purpose-specific datasets to the Excel scenario modeller.
 
 The repository version has been deliberately sanitised so that the implemented architecture and model behaviour can be inspected without exposing confidential planning data, production infrastructure details or identifiable portfolio information.
 
@@ -12,24 +14,22 @@ The repository version has been deliberately sanitised so that the implemented a
 | :------- | :------ |
 | [Sanitised Datasets](00_sanitised_datasets/) | Representative CSV datasets used by the repository version of the semantic model. These replace controlled enterprise and SharePoint source connections while preserving the schemas, relationships and representative structures required to demonstrate the implemented solution. |
 | [Power Query](01_power_query/) | Sanitised production Power Query implementation organised into the same functional modules used within the semantic model: controlled manual-profile integration, controlled transaction scope, Financial Entity-to-case translation and semantic-model reference data. |
-| [Working Semantic Model](02_working_solution/data_pipeline.pbix) | Working sanitised Power BI semantic model. Production-source ingestion has been replaced by the representative repository datasets, allowing the implemented model structure, transformations, relationships and downstream interfaces to be inspected without access to production data sources. |
+| [Working Semantic Model](02_working_solution/data_pipeline.pbix) | Working sanitised Power BI semantic model. Production-source ingestion has been replaced by representative repository datasets, allowing the implemented model structure, transformations, relationships and downstream interfaces to be inspected without production connectivity. |
 
-## Power Query Modules
-
-The Power Query implementation is organised to align with the technical architecture and data-engineering stages documented elsewhere in the repository.
+## Power Query modules
 
 | Module | Purpose |
 | :----- | :------ |
-| [Controlled Manual Profile Integration](01_power_query/001_controlled_manual_profile_integration.pq) | Documents the controlled ingestion and validation of manually supplied modelling profiles and associated metadata, including surrogate Financial Entity generation and integration into the common model structures. |
-| [Controlled Transaction Scope](01_power_query/002_controlled_transaction_scope.pq) | Documents the preparation of the principal financial and production transaction dataset, including account selection, calculated-member derivation, transaction scoping and generation of the integrated modelling dataset. |
+| [Controlled Manual Profile Integration](01_power_query/001_controlled_manual_profile_integration.pq) | Documents the controlled ingestion and validation of manually supplied modelling profiles and associated metadata, including surrogate Financial Entity generation and integration into common model structures. |
+| [Controlled Transaction Scope](01_power_query/002_controlled_transaction_scope.pq) | Documents preparation of the principal financial and production transaction dataset, including account selection, calculated-member derivation, transaction scoping and generation of the integrated modelling dataset. |
 | [Financial Entity to Case Translation](01_power_query/003_financial_entity_case_translation.pq) | Documents the controlled mapping between source Financial Entities and the modelling cases presented to users within the scenario modeller. |
 | [Semantic Model Reference](01_power_query/004_semantic_model_reference.pq) | Documents supporting Financial Entity, hierarchy, Plan Type and tax reference structures used by the semantic model and downstream Excel interfaces. |
 
-## Sanitised Datasets
+## Sanitised datasets
 
 The representative CSV datasets are organised using the same functional structure as the Power Query implementation.
 
-| Dataset Group | Repository Data |
+| Dataset group | Repository data |
 | :------------ | :-------------- |
 | [Controlled Manual Profile Integration](00_sanitised_datasets/001_controlled_manual_profile_integration/) | `manual_metadata.csv` and `manual_profiles.csv` provide representative manual-input metadata and profile data without retaining the controlled source workbooks. |
 | [Controlled Transaction Scope](00_sanitised_datasets/002_controlled_transaction_scope/) | `accounts_calc_logics.csv`, `accounts_derived_names.csv`, `accounts_sorting.csv`, `accounts_system.csv` and `transaction.csv` provide the representative account structures, calculation mappings and transaction data required by the semantic-model pipeline. |
@@ -38,7 +38,7 @@ The representative CSV datasets are organised using the same functional structur
 
 This structure is intentional. It creates a consistent naming convention across the **architecture diagrams, Power Query implementation, sanitised datasets and working semantic model**, making the implementation easier to inspect and trace.
 
-## Data Sanitisation Approach
+## Data sanitisation approach
 
 The production semantic model connects to governed enterprise data sources and controlled SharePoint inputs containing information that is not appropriate for inclusion within the project repository.
 
@@ -56,26 +56,26 @@ A separate sanitised implementation was therefore created for submission. The sa
 
 The objective is **functional and structural equivalence rather than numerical equivalence**. The sanitised datasets preserve the schemas, relationships, transformations and representative analytical behaviour required to demonstrate the solution. They must not be interpreted as genuine historical or forecast portfolio information.
 
-## Production Implementation Reference
+## Production implementation reference
 
 The files contained in [`01_power_query`](01_power_query/) preserve sanitised versions of the production Power Query implementation for technical inspection.
 
 Production server names, database names, SharePoint locations and other environment-specific identifiers have been removed or replaced with descriptive placeholders. Where appropriate, production connection logic is retained as non-executable reference code so that the implemented data-engineering approach remains inspectable.
 
-The working repository model [`data_pipeline.pbix`](02_working_solution/data_pipeline.pbix) replaces these controlled production sources with the representative CSV datasets contained in [`00_sanitised_datasets`](00_sanitised_datasets/).
+The working repository model [`data_pipeline.pbix`](02_working_solution/data_pipeline.pbix) replaces controlled production sources with the representative CSV datasets contained in [`00_sanitised_datasets`](00_sanitised_datasets/).
 
 This deliberately separates two repository purposes:
 
-- **Implementation evidence** — the `.pq` modules document how the production solution integrates and transforms its governed sources.
+- **Implementation evidence** — the `.pq` modules document how the production solution integrates and transforms governed sources.
 - **Working demonstration** — the `.pbix` uses sanitised representative data so that the semantic model can be inspected without production connectivity.
 
 Small, stable reference dimensions may instead be represented directly within Power Query using static tables where introducing a separate external dataset would add no meaningful value.
 
-## Architecture Alignment
+## Architecture alignment
 
 The semantic-model implementation is documented through the technical architecture diagrams contained in [`02_architecture`](../02_architecture/). The first six diagrams in the architecture set describe the end-to-end flow from governed source data through semantic-model preparation and into the Excel scenario modelling application.
 
-| Architecture Diagram | Relevance to the Semantic Model |
+| Architecture diagram | Relevance to the semantic model |
 | :------------------- | :------------------------------ |
 | [Overall Solution Architecture](../02_architecture/svg/001_overall_solution_architecture.svg) | Provides the end-to-end view of the modelling framework and the position of the semantic model between governed source data and the Excel scenario modelling application. |
 | [Semantic Model Data Integration](../02_architecture/svg/002_semantic_model_data_integration.svg) | Describes the principal data sources, preparation stages and reference structures integrated within the semantic layer. |
@@ -84,11 +84,9 @@ The semantic-model implementation is documented through the technical architectu
 | [Financial Entity to Case Translation](../02_architecture/svg/005_financial_entity_case_translation.svg) | Documents the translation between governed Financial Entity structures and the modelling cases exposed to scenario users. |
 | [Semantic Model to Excel Interface](../02_architecture/svg/006_semantic_model_to_excel_interface.svg) | Describes the purpose-specific interface through which the semantic model supplies case, profile and supporting data to the Excel application. |
 
-Together, these diagrams provide the principal architectural documentation for the semantic-model layer and its interfaces.
+Together, these diagrams create a traceable path between **architecture design, source code, representative data, the working semantic model and its downstream Excel interfaces**.
 
-The naming and organisation of the sanitised datasets and Power Query modules in this folder deliberately align with these diagrams where applicable. This creates a traceable path between **architecture design, source code, representative data, the working semantic model and its downstream Excel interfaces**.
-
-## Design Principles
+## Design principles
 
 The semantic-model implementation applies several principles established for the wider framework:
 
@@ -100,7 +98,7 @@ The semantic-model implementation applies several principles established for the
 - **Consistent treatment** — common data and calculation structures are applied systematically across modelling cases.
 - **Governance by design** — controlled inputs, mappings, validation and purpose-specific interfaces are embedded within the architecture.
 
-## Relationship to the Excel Modeller
+## Relationship to the Excel modeller
 
 The semantic model acts as the governed upstream data layer for the Excel scenario modelling application.
 
@@ -108,9 +106,20 @@ Purpose-specific queries expose the required case listing, modelling profiles an
 
 The sanitised repository implementation preserves this separation between **data preparation and governance in the semantic layer** and **scenario configuration and calculation in the application layer**.
 
-For the repository working solution, the corresponding Excel application is also provided in sanitised form so that the downstream modelling workflow can be demonstrated without requiring access to the production semantic model or enterprise data sources.
+The corresponding working sanitised Excel application is documented in [`01_excel_application`](../01_excel_application/README.md).
 
-## Security and Confidentiality
+## Relationship to subsequent web development
+
+The later Streamlit and React applications do **not** query this Power BI model at runtime. They currently use representative CSV inputs from `07_streamlit_app/data/sample` and a shared Python package extracted from the modelling concepts developed in the original project.
+
+This keeps the distinction clear between:
+
+- the original governed data architecture documented here; and
+- later software experiments exploring alternative interfaces, application state, persistence and analytical services.
+
+The web applications should therefore be evaluated against their own current implementations and tests rather than being assumed to inherit full equivalence from the original semantic-model layer.
+
+## Security and confidentiality
 
 The datasets and working artefacts contained in this folder are provided solely to demonstrate the technical implementation.
 
@@ -125,4 +134,4 @@ The repository must not contain:
 
 Production data and infrastructure remain subject to the organisation's established information-classification, access-control and governance requirements.
 
----
+[Return to repository overview](../README.md)
