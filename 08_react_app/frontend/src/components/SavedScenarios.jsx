@@ -3,6 +3,7 @@ import { ArrowRight, FolderOpen, Trash2, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { WorkingScenarioContext } from '../hooks/WorkingScenarioContext'
 import { deleteSavedScenario, listSavedScenarios } from '../api/client'
+import DeleteScenarioConfirmation from './DeleteScenarioConfirmation'
 import './OperationsGuide.css'
 import './SavedScenarios.css'
 
@@ -13,9 +14,11 @@ export default function SavedScenarios({ onClose, onOpen, onNew }) {
   const location = useLocation()
   const deleteLock = useRef(false)
   const [deleting, setDeleting] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null)
   const [deleteError, setDeleteError] = useState(null)
   async function remove(item) {
-    if (deleteLock.current || !window.confirm(`Delete saved scenario "${item.name}"? This cannot be undone. Your working copy will be kept.`)) return
+    if (deleteLock.current) return
+    setPendingDelete(null)
     deleteLock.current = true
     setDeleting(item.scenario_id)
     setDeleteError(null)
@@ -67,7 +70,7 @@ export default function SavedScenarios({ onClose, onOpen, onNew }) {
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
   }
 
-  return <dialog ref={dialogRef} className="operations-guide saved-scenarios" aria-labelledby="saved-scenarios-title"
+  return <><dialog ref={dialogRef} className="operations-guide saved-scenarios" aria-labelledby="saved-scenarios-title"
     aria-describedby="saved-scenarios-intro" onKeyDown={trapFocus}
     onCancel={event => { event.preventDefault(); onClose() }}
     onClick={event => {
@@ -100,10 +103,12 @@ export default function SavedScenarios({ onClose, onOpen, onNew }) {
             </span>
             <ArrowRight size={18} aria-hidden="true" />
           </button>
-          <button type="button" className="saved-scenarios__delete" disabled={deleting !== null} title={`Delete ${item.name}`} aria-label={`Delete ${item.name}`} onClick={() => remove(item)}><Trash2 size={18} aria-hidden="true" /></button>
+          <button type="button" className="saved-scenarios__delete" disabled={deleting !== null} title={`Delete ${item.name}`} aria-label={`Delete ${item.name}`} aria-haspopup="dialog" onClick={() => setPendingDelete(item)}><Trash2 size={18} aria-hidden="true" /></button>
         </li>)}</ul>
       </>}
     </div>
     <footer className="operations-guide__footer">{onNew && <button type="button" className="saved-scenarios__action" style={{ marginBottom: 10 }} onClick={onNew}>New scenario</button>}<p>Opening restores the configuration. Run it again for current results.</p></footer>
   </dialog>
+    {pendingDelete && <DeleteScenarioConfirmation name={pendingDelete.name} onCancel={() => setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} />}
+  </>
 }
