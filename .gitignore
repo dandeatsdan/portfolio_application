@@ -24,3 +24,6 @@ Thumbs.db
 
 # Local saved scenario definitions
 08_react_app/app_data/
+
+# Real BP data — never commit
+data/real/
