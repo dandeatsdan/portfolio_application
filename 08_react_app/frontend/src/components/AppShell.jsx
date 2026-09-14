@@ -68,7 +68,6 @@ const NAV_ITEMS = [
   { to: '/portfolio', label: 'Portfolio Viewer' },
   { to: '/build',     label: 'Build a Scenario' },
   { to: '/results',   label: 'Scenario Results' },
-  { to: '/optimise', label: 'Portfolio Optimiser' },
 ]
 
 const HOME_PATHS = ['/']

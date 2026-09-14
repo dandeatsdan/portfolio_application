@@ -16,7 +16,6 @@ import Home             from './pages/Home'
 import PortfolioViewer  from './pages/PortfolioViewer'
 import BuildScenario    from './pages/BuildScenario'
 import ScenarioResults  from './pages/ScenarioResults'
-import PortfolioOptimiser from './pages/PortfolioOptimiser'
 
 export const DEFAULT_FILTERS = {
   yearFrom: 2026, yearTo: 2040,
@@ -58,7 +57,6 @@ export default function App() {
                   <Route path="/portfolio" element={<PortfolioViewer />} />
                   <Route path="/build"     element={<BuildScenario />} />
                   <Route path="/results"   element={<ScenarioResults />} />
-                  <Route path="/optimise" element={<PortfolioOptimiser />} />
                 </Routes>
               </AppShellWithPanel>
             </BrowserRouter>
