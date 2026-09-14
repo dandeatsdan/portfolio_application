@@ -263,11 +263,20 @@ import numpy as np
 import pandas as pd
 import pulp
 import highspy
-from scenario_modeller.domain.optimisation import OptimisationSpec
+from scenario_modeller.domain.optimisation import OptimisationSpec, OBJECTIVE_METRICS
 from scenario_modeller.services.valuation_service import npv_by_case
 from scenario_modeller.services.scenario_service import execute_scenario
 
 METRICS = {'capex': 'Cash Capex', 'production': 'Total Production (mboed)'}
+
+
+def sum_by_case(data, metric_key, year_from, year_to, ids):
+    """Undiscounted sum of metric_key for each case over the year window."""
+    selected = data.loc[(data.Metric == metric_key) & data.Year.between(year_from, year_to) & data.ID.isin(ids)]
+    summed = selected.groupby('ID').Value.sum()
+    is_production = metric_key == 'Total Production (mboed)'
+    factor = 0.36525 if is_production else 1.0
+    return {i: float(summed.get(i, 0)) * factor for i in ids}
 
 
 def prepare_coefficients(profiles, cases, spec):
@@ -282,35 +291,44 @@ def prepare_coefficients(profiles, cases, spec):
     if data.duplicated(['ID', 'Metric', 'Year']).any() or not np.isfinite(data.Value).all():
         raise ValueError('Duplicate or non-finite analytical profiles')
     # Missing annual rows within a present metric are zero, as in existing reports.
-    for metric in ['Post-Tax Cash Flow', *METRICS.values()]:
+    required_metrics = {*METRICS.values(), 'Post-Tax Cash Flow', 'Post-Tax RCOP', 'Total Production (mboed)'}
+    for metric in required_metrics:
         missing = set(ids) - set(data.loc[data.Metric == metric, 'ID'])
         if missing:
             raise ValueError(f'Missing {metric} profiles for cases {sorted(missing)}')
-    npvs = npv_by_case(data, 8, spec.year_from, spec.year_to).set_index('ID').NPV
-    objective = {i: float(npvs.get(i, 0)) for i in ids}
+    obj_metric = OBJECTIVE_METRICS.get(spec.objective, 'Post-Tax Cash Flow')
+    if spec.objective == 'post_tax_fcf':
+        npvs = npv_by_case(data, 8, spec.year_from, spec.year_to).set_index('ID').NPV
+        objective = {i: float(npvs.get(i, 0)) for i in ids}
+    else:
+        raw = sum_by_case(data, obj_metric, spec.year_from, spec.year_to, ids)
+        objective = {i: float(raw.get(i, 0)) for i in ids}
 
-    def values(metric, start, end, cumulative):
-        selected = data.loc[(data.Metric == METRICS[metric]) & data.Year.between(start, end)]
+    def values(metric, start, end, cumulative, scoped_ids=None):
+        scope = scoped_ids if scoped_ids is not None else ids
+        selected = data.loc[(data.Metric == METRICS[metric]) & data.Year.between(start, end) & data.ID.isin(scope)]
         summed = selected.groupby('ID').Value.sum()
         factor = -1 if metric == 'capex' else .36525 if cumulative else 1
-        result = {i: float(summed.get(i, 0)) * factor for i in ids}
+        result = {i: float(summed.get(i, 0)) * factor for i in scope}
         if any(not math.isfinite(v) for v in result.values()):
             raise ValueError(f'{metric} values must be finite')
         # Capex is signed net expenditure, matching existing reports. A positive
         # raw cash-flow entry reduces expenditure; never reject, abs or clip it.
         if metric == 'production' and any(v < -1e-8 for v in result.values()):
             raise ValueError('Production values must be nonnegative; review the source data')
-        return result
+        # Pad all portfolio IDs with zero so the solver model is complete.
+        return {i: result.get(i, 0.0) for i in ids}
 
     limits = []
     for constraint in spec.constraints:
+        scoped = [int(i) for i in constraint.case_ids] if constraint.case_ids is not None else None
         periods = [(constraint.year_from, constraint.year_to)] if constraint.basis == 'total' else [(y, y) for y in range(constraint.year_from, constraint.year_to + 1)]
         for start, end in periods:
             limits.append({'id': constraint.id, 'metric': constraint.metric, 'basis': constraint.basis,
                 'year_from': start, 'year_to': end, 'operator': constraint.operator,
                 'target': constraint.target, 'flexibility_pct': constraint.flexibility_pct,
                 'unit': '$m' if constraint.metric == 'capex' else 'mmboe' if constraint.basis == 'total' else 'mboed',
-                'coefficients': values(constraint.metric, start, end, constraint.basis == 'total')})
+                'coefficients': values(constraint.metric, start, end, constraint.basis == 'total', scoped)})
     headline = {metric: values(metric, spec.year_from, spec.year_to, True) for metric in METRICS}
     return ids, objective, limits, headline
 
@@ -400,7 +418,7 @@ def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, t
             if not run.valid:
                 raise ValueError('Recommended selection failed scenario execution')
             _, replay_npv, replay_limits, replay_headline = prepare_coefficients(run.results, cases.loc[cases.ID.isin(selected)],
-                OptimisationSpec(spec.year_from, spec.year_to, spec.constraints))
+                OptimisationSpec(spec.year_from, spec.year_to, spec.constraints, objective=spec.objective))
             if any(not math.isclose(objective[i], replay_npv[i], rel_tol=1e-8, abs_tol=1e-6) for i in selected):
                 raise ValueError('Recommendation NPV does not reconcile with the scenario engine')
             for original, replay in zip(limits, replay_limits):

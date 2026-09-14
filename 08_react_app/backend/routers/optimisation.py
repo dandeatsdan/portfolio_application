@@ -73,6 +73,7 @@ class ConstraintInput(StrictModel):
     operator: Literal['max', 'min']
     target: float = Field(ge=0, le=1e12)
     flexibility_pct: int = Field(default=0, ge=0, le=15, strict=True)
+    case_ids: list[int] | None = Field(default=None)
 
     @model_validator(mode='after')
     def valid(self):
@@ -84,7 +85,7 @@ class ConstraintInput(StrictModel):
 
 
 class OptimisationRequest(StrictModel):
-    objective: Literal['post_tax_npv'] = 'post_tax_npv'
+    objective: Literal['post_tax_fcf', 'underlying_rcop', 'production'] = 'post_tax_fcf'
     year_from: int = Field(default=2026, ge=2026, le=2040, strict=True)
     year_to: int = Field(default=2040, ge=2026, le=2040, strict=True)
     constraints: list[ConstraintInput] = Field(default_factory=list, max_length=30)
@@ -152,8 +153,9 @@ class OptimisationResponse(StrictModel):
 @router.post('/solve', response_model=OptimisationResponse)
 def solve(request: OptimisationRequest):
     spec = OptimisationSpec(request.year_from, request.year_to,
-        tuple(Constraint(**c.model_dump()) for c in request.constraints),
-        tuple(request.mandatory_case_ids), tuple(request.excluded_case_ids))
+        tuple(Constraint(**{**c.model_dump(), 'case_ids': tuple(c.case_ids) if c.case_ids is not None else None}) for c in request.constraints),
+        tuple(request.mandatory_case_ids), tuple(request.excluded_case_ids),
+        objective=request.objective)
     if not solve_lock.acquire(blocking=False):
         raise HTTPException(409, detail='An optimisation is already running. Try again when it finishes.')
     try:

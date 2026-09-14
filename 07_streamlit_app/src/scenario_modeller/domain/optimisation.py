@@ -34,6 +34,14 @@ class Constraint:
     operator: str  # max or min
     target: float
     flexibility_pct: int = 0
+    case_ids: tuple[int, ...] | None = None  # when set, constraint applies only to these cases
+
+
+OBJECTIVE_METRICS = {
+    'post_tax_fcf':  'Post-Tax Cash Flow',
+    'underlying_rcop': 'Post-Tax RCOP',
+    'production':    'Total Production (mboed)',
+}
 
 
 @dataclass(frozen=True)
@@ -43,3 +51,4 @@ class OptimisationSpec:
     constraints: tuple[Constraint, ...] = ()
     mandatory_case_ids: tuple[int, ...] = ()
     excluded_case_ids: tuple[int, ...] = ()
+    objective: str = 'post_tax_fcf'  # key from OBJECTIVE_METRICS
