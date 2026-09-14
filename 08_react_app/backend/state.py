@@ -61,6 +61,7 @@ from scenario_modeller.services.portfolio_service import add_derived_totals
 # Adjust this path if the folder is renamed or moved.
 _HERE = Path(__file__).parent
 _DATA_CANDIDATES = [
+    _HERE.parent.parent / "data" / "real",
     _HERE.parent.parent / "07_streamlit_app" / "data" / "sample",
     _HERE.parent.parent / "07_software_project" / "data" / "sample",
 ]
