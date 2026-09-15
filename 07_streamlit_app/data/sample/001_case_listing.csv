@@ -1,4 +1,4 @@
-[Case],[Group Entity],[Segment],[Region],[Country],[Plan Type],[Case Name],[Country Key],[Index],Count,Meta
+[Case],[Group Entity],[Segment],[Region],[Country],[Plan Type],[Case Name],[Country Key],[Index],Count,[Meta]
 Project Ironwood |Main Plan,Gas,G&LC,Frontier Region,Eastern Province,Main Plan,Project Ironwood,90001,1,1,Normal
 Project Northstar |Main Plan,Gas,G&LC,Frontier Region,Eastern Province,Main Plan,Project Northstar,90001,2,1,Normal
 Project Silver Peak |Main Plan,Oil,P&O,Falcon Territories,Falcon Region,Main Plan,Project Silver Peak,90002,3,1,Normal
