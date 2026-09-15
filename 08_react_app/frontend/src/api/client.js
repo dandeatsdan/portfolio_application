@@ -29,6 +29,7 @@ function filterParams(filters = {}) {
   if (filters.regions?.length)       p.regions        = filters.regions.join(',')
   if (filters.countries?.length)     p.countries      = filters.countries.join(',')
   if (filters.caseNames?.length)     p.case_names     = filters.caseNames.join(',')
+  if (filters.metas?.length)         p.metas          = filters.metas.join(',')
   return p
 }
 

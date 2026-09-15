@@ -13,6 +13,7 @@ const DIMENSIONS = [
   { key: 'regions',       label: 'Region',       optKey: 'regions'        },
   { key: 'countries',     label: 'Country',      optKey: 'countries'      },
   { key: 'caseNames',     label: 'Case Name',    optKey: 'case_names'     },
+  { key: 'metas',         label: 'Meta',         optKey: 'metas'          },
 ]
 
 function Section({ label, selectedCount, open, onToggle, onClear, children }) {
@@ -63,6 +64,16 @@ function CheckList({ available, selected, onChange }) {
     onChange(next)
   }
 
+  const allFilteredSelected = filtered.length > 0 && filtered.every(v => selected.includes(v))
+  const toggleAll = () => {
+    if (allFilteredSelected) {
+      onChange(selected.filter(v => !filtered.includes(v)))
+    } else {
+      const added = filtered.filter(v => !selected.includes(v))
+      onChange([...selected, ...added])
+    }
+  }
+
   return (
     <div>
       {available.length > 7 && (
@@ -76,6 +87,22 @@ function CheckList({ available, selected, onChange }) {
             marginBottom: '0.35rem', outline: 'none',
           }}
         />
+      )}
+      {filtered.length > 1 && (
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          fontSize: 11, padding: '2px 0 4px', cursor: 'pointer',
+          color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)',
+          marginBottom: '0.25rem',
+        }}>
+          <input
+            type="checkbox"
+            checked={allFilteredSelected}
+            onChange={toggleAll}
+            style={{ accentColor: 'var(--color-accent-dark)', cursor: 'pointer' }}
+          />
+          {allFilteredSelected ? 'Deselect all' : 'Select all'}
+        </label>
       )}
       <div style={{ maxHeight: 160, overflowY: 'auto' }}>
         {filtered.map(v => (
@@ -105,7 +132,7 @@ export default function FilterRail({ filters, onChange, showYearRange = true, pe
   const [open, setOpen] = useState({ yearRange: true, planTypes: true })
   const [options, setOptions] = useState({
     plan_types: [], group_entities: [], segments: [],
-    regions: [], countries: [], case_names: [],
+    regions: [], countries: [], case_names: [], metas: [],
   })
 
   // Re-fetch cascaded options whenever filters change
@@ -124,7 +151,7 @@ export default function FilterRail({ filters, onChange, showYearRange = true, pe
   const EMPTY_FILTERS = {
     yearFrom: 2026, yearTo: 2040,
     planTypes: [], groupEntities: [], segments: [],
-    regions: [], countries: [], caseNames: [],
+    regions: [], countries: [], caseNames: [], metas: [],
   }
 
   return (

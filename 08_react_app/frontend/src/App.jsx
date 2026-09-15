@@ -21,7 +21,7 @@ import PortfolioOptimiser from './pages/PortfolioOptimiser'
 export const DEFAULT_FILTERS = {
   yearFrom: 2026, yearTo: 2040,
   planTypes: [], groupEntities: [], segments: [],
-  regions: [], countries: [], caseNames: [],
+  regions: [], countries: [], caseNames: [], metas: [],
 }
 
 export const SelectionContext      = createContext({ selectedIds: new Set(), setSelectedIds: () => {} })

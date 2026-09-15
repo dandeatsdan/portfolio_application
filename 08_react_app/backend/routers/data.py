@@ -108,6 +108,7 @@ def get_filter_options(
     regions:        str = Query(default=""),
     countries:      str = Query(default=""),
     case_names:     str = Query(default=""),
+    metas:          str = Query(default=""),
 ):
     """
     Return the available values for each filter dimension given the current
@@ -126,6 +127,7 @@ def get_filter_options(
         "Region":       _vals("Region",       regions),
         "Country":      _vals("Country",      countries),
         "Case Name":    _vals("Case Name",    case_names),
+        "Meta":         _vals("Meta",         metas),
     }
 
     def _filter_except(exclude_col):
@@ -133,10 +135,14 @@ def get_filter_options(
         for col, vals in sel.items():
             if col == exclude_col or not vals:
                 continue
+            if col not in df.columns:
+                continue
             df = df[df[col].isin(vals)]
         return df
 
     def _sorted(df, col):
+        if col not in df.columns:
+            return []
         return sorted(df[col].dropna().unique().tolist())
 
     return {
@@ -146,6 +152,7 @@ def get_filter_options(
         "regions":        _sorted(_filter_except("Region"),       "Region"),
         "countries":      _sorted(_filter_except("Country"),      "Country"),
         "case_names":     _sorted(_filter_except("Case Name"),    "Case Name"),
+        "metas":          _sorted(_filter_except("Meta"),         "Meta"),
     }
 
 

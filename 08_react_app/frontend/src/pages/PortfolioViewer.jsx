@@ -27,16 +27,6 @@ import { CASE_SUMMARY_COLUMNS, sortCaseSummaryRows } from './caseSummarySort'
 const BP_GREEN   = '#007F00'
 const PANEL_H    = 240          // fixed height for chart panels
 
-const PLAN_TYPE_BADGE = {
-  'Main Plan':          { bg: '#003600', text: '#fff'     },
-  'Selected':           { bg: '#8EDF00', text: '#003600'  },
-  'Renewal ADP':        { bg: '#0089A8', text: '#fff'     },
-  'Renewal Exploration':{ bg: '#0070FF', text: '#fff'     },
-  'Manual':             { bg: '#14BFC8', text: '#003600'  },
-}
-function planTypeBadge(pt) {
-  return PLAN_TYPE_BADGE[pt] ?? { bg: bp.warmGrey4, text: '#fff' }
-}
 
 const DIMENSION_OPTIONS = [
   { value: '',             label: 'None (total)'  },
@@ -45,6 +35,7 @@ const DIMENSION_OPTIONS = [
   { value: 'region',       label: 'Region'        },
   { value: 'country',      label: 'Country'       },
   { value: 'case_name',    label: 'Case'          },
+  { value: 'meta',         label: 'Meta'          },
 ]
 
 const CREAM_DIM_OPTIONS = DIMENSION_OPTIONS.filter(o => o.value !== '')
@@ -75,6 +66,9 @@ function fmt(v, dp = 0) {
   if (v == null) return '—'
   return Number(v).toLocaleString(undefined, { maximumFractionDigits: dp })
 }
+const chartTooltipFormatter = (value) => [
+  Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 }),
+]
 function fmtBn(v, dp = 1) {
   if (v == null) return '—'
   return (Number(v) / 1000).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })
@@ -184,7 +178,7 @@ function FlexChartPanel({ metric, groupBy, filters }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="Year" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
+                <Tooltip formatter={chartTooltipFormatter} />
                 {seriesKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 10 }} />}
                 {seriesKeys.map((s, i) => (
                   <Area key={s} type="monotone" dataKey={s} stackId="1"
@@ -197,7 +191,7 @@ function FlexChartPanel({ metric, groupBy, filters }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="Year" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
+                <Tooltip formatter={chartTooltipFormatter} />
                 {seriesKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 10 }} />}
                 {seriesKeys.map((s, i) => (
                   <Bar key={s} dataKey={s} stackId="1"
@@ -602,7 +596,6 @@ export default function PortfolioViewer() {
               {sortedCases.map(row => {
                 const isShortlisted = shortlistIds.has(row.ID)
                 const isHighlighted = isChartHighlighted(row)
-                const badge = planTypeBadge(row['Plan Type'])
                 return (
                   <tr
                     key={row.ID}
@@ -625,11 +618,7 @@ export default function PortfolioViewer() {
                       />
                     </td>
                     <td style={{ padding: '6px 8px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Case Name']}</td>
-                    <td style={{ padding: '6px 8px' }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, background: badge.bg, color: badge.text, whiteSpace: 'nowrap' }}>
-                        {row['Plan Type']}
-                      </span>
-                    </td>
+                    <td style={{ padding: '6px 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Plan Type']}</td>
                     <td style={{ padding: '6px 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Group Entity']}</td>
                     <td style={{ padding: '6px 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Segment']}</td>
                     <td style={{ padding: '6px 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.Region}</td>

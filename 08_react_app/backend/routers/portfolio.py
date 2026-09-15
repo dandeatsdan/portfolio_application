@@ -81,6 +81,7 @@ def _filter_cases(
     regions:        str = "",
     countries:      str = "",
     case_names:     str = "",
+    metas:          str = "",
 ) -> pd.DataFrame:
     """Apply dimension filters to case_listing, return filtered copy."""
     df = case_listing.copy()
@@ -102,6 +103,9 @@ def _filter_cases(
     if case_names:
         vals = [v.strip() for v in case_names.split(",") if v.strip()]
         df = df[df["Case Name"].isin(vals)]
+    if metas and "Meta" in df.columns:
+        vals = [v.strip() for v in metas.split(",") if v.strip()]
+        df = df[df["Meta"].isin(vals)]
     return df
 
 
@@ -135,9 +139,10 @@ def get_kpis(
     regions:       str = Query(default=""),
     countries:     str = Query(default=""),
     case_names:    str = Query(default=""),
+    metas:         str = Query(default=""),
 ):
     metric_list = [m.strip() for m in metrics.split(",") if m.strip()]
-    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
+    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names, metas)
     profs = to_display(_filter_profiles(app_state.profiles, cases, year_from, year_to), app_state.invert_metrics)
 
     result = []
@@ -160,8 +165,9 @@ def get_stacked(
     regions:       str = Query(default=""),
     countries:     str = Query(default=""),
     case_names:    str = Query(default=""),
+    metas:         str = Query(default=""),
 ):
-    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
+    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names, metas)
     profs = to_display(_filter_profiles(app_state.profiles, cases, year_from, year_to), app_state.invert_metrics)
     df = profs[profs["Metric"] == metric].copy()
 
@@ -172,6 +178,7 @@ def get_stacked(
         "country":      "Country",
         "group_entity": "Group Entity",
         "case_name":    "Case Name",
+        "meta":         "Meta",
     }
 
     if group_by and group_by in COL_MAP:
@@ -206,8 +213,9 @@ def get_ranked(
     regions:       str = Query(default=""),
     countries:     str = Query(default=""),
     case_names:    str = Query(default=""),
+    metas:         str = Query(default=""),
 ):
-    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
+    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names, metas)
     profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
     if metric == NPV_METRIC:
         df = npv_by_case(profs, discount_rate, year_from, year_to).rename(columns={"NPV": "Value"})
@@ -221,6 +229,7 @@ def get_ranked(
         "country":      "Country",
         "group_entity": "Group Entity",
         "case_name":    "Case Name",
+        "meta":         "Meta",
     }
     dim_col = COL_MAP.get(rank_by, "Case Name")
     df = df.merge(cases[["ID", dim_col]].drop_duplicates(), on="ID", how="inner")
@@ -249,6 +258,7 @@ def get_creaming(
     regions:       str   = Query(default=""),
     countries:     str   = Query(default=""),
     case_names:    str   = Query(default=""),
+    metas:         str   = Query(default=""),
 ):
     """
     Creaming curve: each point is one aggregated unit (case, region, country, or group entity).
@@ -262,10 +272,11 @@ def get_creaming(
         "country":      "Country",
         "group_entity": "Group Entity",
         "plan_type":    "Plan Type",
+        "meta":         "Meta",
     }
     dim_col = COL_MAP.get(group_by, "Case Name")
 
-    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
+    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names, metas)
     profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
     npv_per_case = npv_by_case(profs, discount_rate, year_from, year_to)
     if npv_per_case.empty:
@@ -311,13 +322,14 @@ def get_entity_summary(
     regions:       str = Query(default=""),
     countries:     str = Query(default=""),
     case_names:    str = Query(default=""),
+    metas:         str = Query(default=""),
     discount_rate: float = Query(default=8.0, gt=-100, allow_inf_nan=False),
 ):
     """
     Per-case summary: Case Name, Plan Type, Region, Country,
     Cumulative Production, Cumulative Capex, Cumulative FCF, NPV.
     """
-    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names)
+    cases = _filter_cases(app_state.case_listing, plan_types, group_entities, segments, regions, countries, case_names, metas)
     profs = _filter_profiles(app_state.profiles, cases, year_from, year_to)
 
     def get_metric_totals(metric):
