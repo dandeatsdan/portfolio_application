@@ -280,7 +280,7 @@ from scenario_modeller.engine.financials import source_profiles
 from scenario_modeller.services.valuation_service import npv_by_case
 from scenario_modeller.services.scenario_service import execute_scenario
 
-METRICS = {'capex': 'Cash Capex', 'production': 'Total Production (mboed)'}
+METRICS = {'capex': 'Cash Capex', 'production': 'Total Production (mboed)', 'post_tax_fcf': 'Post-Tax Cash Flow'}
 MIX_DIMENSIONS = {'group_entity': 'Group Entity', 'region': 'Region'}
 
 
@@ -294,7 +294,7 @@ def dimension_values(cases, dimension):
 def resolve_case_controls(cases, spec):
     """Apply region -> country -> case rules; explicit optional clears inheritance."""
     states = {int(i): 'optional' for i in cases.ID}
-    allowed = {'optional', 'mandatory', 'excluded'}
+    allowed = {'optional', 'mandatory', 'excluded', 'reference'}
     regions = dimension_values(cases, 'region') if spec.region_rules or spec.country_rules else None
     seen = set()
     for rule in spec.region_rules:
@@ -320,11 +320,31 @@ def resolve_case_controls(cases, spec):
                 raise ValueError('Unsupported country rule')
             for i in members:
                 states[int(i)] = rule.rule
+    if spec.plan_type_rules:
+        if 'Plan Type' not in cases:
+            raise ValueError('Missing plan type metadata')
+        plans = cases.set_index('ID')['Plan Type'].fillna('').replace('', 'Unspecified')
+        seen = set()
+        for rule in spec.plan_type_rules:
+            if rule.plan_type in seen or rule.plan_type not in set(plans) or rule.rule not in allowed:
+                raise ValueError('Unknown, duplicate or unsupported plan type rule')
+            seen.add(rule.plan_type)
+            for i in plans.index[plans == rule.plan_type]:
+                prior = states[int(i)]
+                if rule.rule == 'optional':
+                    continue
+                if prior == 'optional' or prior == rule.rule:
+                    states[int(i)] = rule.rule
+                elif {prior, rule.rule} <= {'mandatory', 'reference'}:
+                    states[int(i)] = 'reference'
+                else:
+                    states[int(i)] = 'conflict'
     if set(spec.mandatory_case_ids) & set(spec.excluded_case_ids):
         raise ValueError('A case cannot be both mandatory and excluded')
     seen = set()
     # Preserve the legacy explicit case lists as case-level overrides.
     explicit = [(i, 'mandatory') for i in spec.mandatory_case_ids] + [(i, 'excluded') for i in spec.excluded_case_ids]
+    explicit += [(i, 'reference') for i in spec.reference_case_ids]
     explicit += [(r.case_id, r.rule) for r in spec.case_rules]
     for i, rule in explicit:
         if i not in states or i in seen:
@@ -333,7 +353,11 @@ def resolve_case_controls(cases, spec):
         if rule not in allowed:
             raise ValueError('Unsupported case rule')
         states[i] = rule
-    return replace(spec, mandatory_case_ids=tuple(sorted(i for i, state in states.items() if state == 'mandatory')),
+    conflicts = [i for i, state in states.items() if state == 'conflict']
+    if conflicts:
+        raise ValueError(f'Conflicting geography and plan type rules for cases {conflicts}; set an explicit case choice')
+    return replace(spec, reference_case_ids=tuple(sorted(i for i, state in states.items() if state == 'reference')),
+                   mandatory_case_ids=tuple(sorted(i for i, state in states.items() if state in {'mandatory', 'reference'})),
                    excluded_case_ids=tuple(sorted(i for i, state in states.items() if state == 'excluded')))
 
 
@@ -386,7 +410,7 @@ def mix_checks(cases, production, selected, spec):
     return output
 
 
-def prepare_coefficients(profiles, cases, spec):
+def prepare_coefficients(profiles, cases, spec, reference_limits=None):
     ids = sorted(int(i) for i in cases.ID)
     if not ids or len(ids) != len(set(ids)):
         raise ValueError('Candidate case IDs must be nonempty and unique')
@@ -421,7 +445,7 @@ def prepare_coefficients(profiles, cases, spec):
         scope = scoped_ids if scoped_ids is not None else ids
         selected = data.loc[(data.Metric == METRICS[metric]) & data.Year.between(start, end) & data.ID.isin(scope)]
         summed = selected.groupby('ID').Value.sum()
-        factor = -1 if metric == 'capex' else .36525 if cumulative else 1
+        factor = -1 if metric == 'capex' else .36525 if metric == 'production' and cumulative else 1
         result = {i: float(summed.get(i, 0)) * factor for i in scope}
         if any(not math.isfinite(v) for v in result.values()):
             raise ValueError(f'{metric} values must be finite')
@@ -439,11 +463,27 @@ def prepare_coefficients(profiles, cases, spec):
             raise ValueError('Unknown or duplicate scoped case IDs')
         periods = [(constraint.year_from, constraint.year_to)] if constraint.basis == 'total' else [(y, y) for y in range(constraint.year_from, constraint.year_to + 1)]
         for start, end in periods:
+            coefficients = values(constraint.metric, start, end, constraint.basis == 'total', scoped)
+            reference_value = sum(coefficients.values())
+            target = constraint.target
+            if reference_limits is not None:
+                original = next(c for c in reference_limits if (c['id'], c['year_from'], c['year_to']) == (constraint.id, start, end))
+                target, reference_value = original['target'], original['reference_value']
+            elif constraint.target_basis == 'relative':
+                if reference_value <= 0:
+                    raise ValueError(f'Constraint {constraint.id} ({start}–{end}) has a nonpositive reference; use an absolute target')
+                target = reference_value * (1 + constraint.relative_pct / 100)
+            if not math.isfinite(target) or abs(target) > 1e12:
+                raise ValueError('Resolved constraint target must be finite and within ±1e12')
+            if target == 0 and constraint.flexibility_pct:
+                raise ValueError('Zero targets must remain strict')
             limits.append({'id': constraint.id, 'metric': constraint.metric, 'basis': constraint.basis,
                 'year_from': start, 'year_to': end, 'operator': constraint.operator,
-                'target': constraint.target, 'flexibility_pct': constraint.flexibility_pct,
-                'unit': '$m' if constraint.metric == 'capex' else 'mmboe' if constraint.basis == 'total' else 'mboed',
-                'coefficients': values(constraint.metric, start, end, constraint.basis == 'total', scoped)})
+                'target': target, 'flexibility_pct': constraint.flexibility_pct,
+                'target_basis': constraint.target_basis, 'relative_pct': constraint.relative_pct,
+                'reference_value': reference_value, 'priority': constraint.priority, 'weight': constraint.weight,
+                'unit': '$m' if constraint.metric != 'production' else 'mmboe' if constraint.basis == 'total' else 'mboed',
+                'coefficients': coefficients})
     headline = {metric: values(metric, spec.year_from, spec.year_to, True) for metric in METRICS}
     headline['npv'] = npv_values
     return ids, objective, limits, headline
@@ -451,10 +491,11 @@ def prepare_coefficients(profiles, cases, spec):
 
 def adjusted_target(limit, step):
     allowance = min(step, limit['flexibility_pct']) / 100
-    return limit['target'] * (1 + allowance if limit['operator'] == 'max' else 1 - allowance)
+    return limit['target'] + abs(limit['target']) * allowance * (1 if limit['operator'] == 'max' else -1)
 
 
-def solve_attempt(ids, objective, limits, spec, step, seconds, case_options=None):
+def solve_attempt(ids, objective, limits, spec, step, seconds, case_options=None, priority_outcomes=None):
+    deadline = monotonic() + seconds
     model = pulp.LpProblem('Portfolio', pulp.LpMaximize)
     x = {i: pulp.LpVariable(f'case_{i}', cat=pulp.LpBinary) for i in ids}
     model += pulp.lpSum(objective[i] * x[i] for i in ids)
@@ -475,25 +516,68 @@ def solve_attempt(ids, objective, limits, spec, step, seconds, case_options=None
     # Include every variable even when objective and constraints have zero coefficients.
     for i in ids:
         model += x[i] <= 1, f'case_bound_{i}'
+    tiers = {}
+    counts = {c['id']: sum(v.get('id') == c['id'] for v in limits) for c in limits if 'id' in c}
     for n, limit in enumerate(limits):
         expression = pulp.lpSum(limit['coefficients'][i] * x[i] for i in ids)
         target = adjusted_target(limit, step)
+        if spec.use_priorities and step > 0 and limit['flexibility_pct']:
+            maximum = abs(limit['target']) * limit['flexibility_pct'] / 100
+            slack = pulp.LpVariable(f'violation_{n}', lowBound=0, upBound=maximum)
+            target = limit['target'] + slack if limit['operator'] == 'max' else limit['target'] - slack
+            factor = limit.get('weight', 1) / (abs(limit['target']) * counts[limit['id']])
+            tiers.setdefault(limit.get('priority', 2), []).append((slack, factor, limit))
         model += (expression <= target if limit['operator'] == 'max' else expression >= target), f'constraint_{n}'
-    model.solve(pulp.HiGHS(msg=False, timeLimit=seconds, gapRel=0, gapAbs=0, threads=1, random_seed=0))
-    # PuLP can map a time-limited incumbent to an 'optimal' status; inspect HiGHS itself.
-    status = model.solverModel.getModelStatus()
-    if status == highspy.HighsModelStatus.kInfeasible:
-        return 'infeasible', None
-    if status == highspy.HighsModelStatus.kUnbounded:
-        return 'unbounded', None
-    if status in (highspy.HighsModelStatus.kTimeLimit, highspy.HighsModelStatus.kIterationLimit, highspy.HighsModelStatus.kSolutionLimit):
+    best = {}
+    for priority in sorted(tiers):
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            return 'time_limit', None
+        expression = pulp.lpSum(slack * factor for slack, factor, _ in tiers[priority])
+        model.sense = pulp.LpMinimize
+        model.setObjective(expression)
+        model.solve(pulp.HiGHS(msg=False, timeLimit=remaining, gapRel=0, gapAbs=0, threads=1, random_seed=0))
+        status = solver_status(model)
+        if status != 'optimal':
+            return status, None
+        best[priority] = float(pulp.value(expression) or 0)
+        # Normalised weighted violations: a 1e-9 absolute tier tolerance.
+        model += expression <= best[priority] + 1e-9, f'priority_{priority}'
+    model.sense = pulp.LpMaximize
+    model.setObjective(pulp.lpSum(objective[i] * x[i] for i in ids))
+    remaining = deadline - monotonic()
+    if remaining <= 0:
         return 'time_limit', None
-    if status != highspy.HighsModelStatus.kOptimal:
-        return 'solver_error', None
+    model.solve(pulp.HiGHS(msg=False, timeLimit=remaining, gapRel=0, gapAbs=0, threads=1, random_seed=0))
+    status = solver_status(model)
+    if status != 'optimal':
+        return status, None
     vector = {i: x[i].value() for i in ids}
     if any(v is None or not math.isfinite(v) or abs(v - round(v)) > 1e-6 for v in vector.values()):
         return 'solver_error', None
-    return 'optimal', [i for i, value in vector.items() if value > .5]
+    selected = [i for i, value in vector.items() if value > .5]
+    for priority in sorted(tiers):
+        actual = 0
+        for _, factor, limit in tiers[priority]:
+            value = sum(limit['coefficients'][i] for i in selected)
+            breach = value - limit['target'] if limit['operator'] == 'max' else limit['target'] - value
+            actual += max(0, breach) * factor
+        if abs(actual - best[priority]) > 1e-7:
+            raise ValueError('Priority optimum failed independent verification')
+        if priority_outcomes is not None:
+            priority_outcomes.append({'priority': priority, 'normalised_violation': actual})
+    return 'optimal', selected
+
+
+def solver_status(model):
+    # Inspect HiGHS: PuLP may call a time-limited incumbent optimal.
+    status = model.solverModel.getModelStatus()
+    return {highspy.HighsModelStatus.kInfeasible: 'infeasible',
+            highspy.HighsModelStatus.kUnbounded: 'unbounded',
+            highspy.HighsModelStatus.kTimeLimit: 'time_limit',
+            highspy.HighsModelStatus.kIterationLimit: 'time_limit',
+            highspy.HighsModelStatus.kSolutionLimit: 'time_limit',
+            highspy.HighsModelStatus.kOptimal: 'optimal'}.get(status, 'solver_error')
 
 
 def constraint_checks(limits, selected, step):
@@ -506,7 +590,7 @@ def constraint_checks(limits, selected, step):
         tolerance = 1e-7 * max(1, abs(adjusted))
         output.append({k: v for k, v in limit.items() if k != 'coefficients'} | {
             'actual': actual, 'adjusted_target': adjusted, 'allowed_pct': min(step, limit['flexibility_pct']),
-            'breach_pct': max(0, signed) / limit['target'] * 100 if limit['target'] else 0,
+            'breach_pct': max(0, signed) / abs(limit['target']) * 100 if limit['target'] else 0,
             'original_satisfied': signed <= tolerance, 'satisfied': headroom >= -tolerance,
             'headroom': headroom})
     return output
@@ -517,6 +601,11 @@ def timing_instruction(case_id, case_name, operation='NoChange', year_shift=0):
     return {'Scenario': 1, 'ID': case_id, 'Case': case_name, 'Include': True,
             'Operation': operation, 'Param1': abs(year_shift),
             **{f'Param{p}': 0 for p in range(2, 6)}}
+
+
+def operation_instruction(case_id, case_name, operation, params):
+    return {'Scenario': 1, 'ID': case_id, 'Case': case_name, 'Include': True,
+            'Operation': operation, **{f'Param{n + 1}': value for n, value in enumerate(params)}}
 
 
 def restricted_constraints(constraints, ids):
@@ -532,7 +621,7 @@ def prepare_timing_options(raw_profiles, cases, tax_rates, spec, objective, limi
     Work is batched by shift, and counts towards the request's solve budget.
     """
     names = cases.set_index('ID').Case
-    options = {int(i): {'case_id': int(i), 'operation': 'NoChange', 'year_shift': 0} for i in cases.ID}
+    options = {int(i): {'case_id': int(i), 'operation': 'NoChange', 'year_shift': 0, 'params': [0] * 5} for i in cases.ID}
     groups = {i: [i] for i in options}
     candidate_frames = [cases.copy()]
     raw = source_profiles(raw_profiles)
@@ -540,12 +629,16 @@ def prepare_timing_options(raw_profiles, cases, tax_rates, spec, objective, limi
     next_id = max(options) + 1
     omitted = 0
     shifts = list(range(1, spec.max_delay_years + 1)) + list(range(-1, -spec.max_acceleration_years - 1, -1))
-    for shift in shifts:
+    candidates = [('Delay' if shift > 0 else 'Accelerate', shift, [abs(shift), 0, 0, 0, 0]) for shift in shifts]
+    eligible_count = sum(i not in spec.excluded_case_ids and i not in spec.reference_case_ids for i in groups)
+    if len(groups) + eligible_count * len(candidates) > 50000:
+        raise ValueError('Too many operation alternatives (maximum 50,000); reduce allowed operations or timing ranges')
+    for operation, shift, params in candidates:
         if monotonic() >= deadline:
             raise TimeoutError('Timing preparation exceeded the optimisation budget')
         eligible = []
         for i in groups:
-            if i in spec.excluded_case_ids:
+            if i in spec.excluded_case_ids or i in spec.reference_case_ids:
                 continue
             frame = by_case.get(i)
             if frame is None or frame.empty:
@@ -554,14 +647,13 @@ def prepare_timing_options(raw_profiles, cases, tax_rates, spec, objective, limi
             inside = shifted_years.between(YEAR_MIN, YEAR_MAX)
             # Keep the complete nonzero profile; avoid improving the objective
             # by clipping costs or production at the modelling horizon.
-            if ((frame.Value != 0) & ~inside).any() or not inside.any():
+            if shift and (((frame.Value != 0) & ~inside).any() or not inside.any()):
                 omitted += 1
                 continue
             eligible.append(i)
         if not eligible:
             continue
-        operation = 'Delay' if shift > 0 else 'Accelerate'
-        instructions = pd.DataFrame([timing_instruction(i, names[i], operation, shift) for i in eligible])
+        instructions = pd.DataFrame([operation_instruction(i, names[i], operation, params) for i in eligible])
         run = execute_scenario(raw, instructions, cases, tax_rates)
         if not run.valid:
             detail = '; '.join(str(d.get('message', d.get('Message', d))) for d in run.diagnostics)
@@ -569,14 +661,14 @@ def prepare_timing_options(raw_profiles, cases, tax_rates, spec, objective, limi
         subset = cases.loc[cases.ID.isin(eligible)].copy()
         alternative_spec = OptimisationSpec(spec.year_from, spec.year_to,
             restricted_constraints(spec.constraints, eligible), objective=spec.objective)
-        _, alt_objective, alt_limits, alt_headline = prepare_coefficients(run.results, subset, alternative_spec)
+        _, alt_objective, alt_limits, alt_headline = prepare_coefficients(run.results, subset, alternative_spec, limits)
         keys = {}
         for i in eligible:
             key = next_id
             next_id += 1
             keys[i] = key
             groups[i].append(key)
-            options[key] = {'case_id': i, 'operation': operation, 'year_shift': shift}
+            options[key] = {'case_id': i, 'operation': operation, 'year_shift': shift, 'params': params}
             objective[key] = alt_objective[i]
             for original, alternative in zip(limits, alt_limits):
                 original['coefficients'][key] = alternative['coefficients'][i]
@@ -600,9 +692,10 @@ def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, t
         'objective': spec.objective, 'objective_label': OBJECTIVES[spec.objective][0],
         'objective_unit': OBJECTIVES[spec.objective][1], 'reference_objective_value': sum(objective.values()),
         'capex': None, 'production': None, 'constraint_checks': [], 'mix_checks': [], 'cases': [], 'diagnostics': [],
-        'reconciled': False, 'solve_time_ms': 0, 'timing_options_omitted': 0}
+        'reconciled': False, 'solve_time_ms': 0, 'timing_options_omitted': 0,
+        'use_priorities': spec.use_priorities, 'priority_outcomes': [], 'post_tax_fcf': None}
     timing = spec.max_delay_years > 0 or spec.max_acceleration_years > 0
-    options = {i: {'case_id': i, 'operation': 'NoChange', 'year_shift': 0} for i in ids}
+    options = {i: {'case_id': i, 'operation': 'NoChange', 'year_shift': 0, 'params': [0] * 5} for i in ids}
     groups = None
     candidate_cases = cases
     if timing:
@@ -615,12 +708,15 @@ def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, t
             return result
     mix_limits = prepare_mix_limits(candidate_cases, headline['production'], spec)
     max_step = max((c.flexibility_pct for c in spec.constraints), default=0)
-    for step in range(max_step + 1):
+    steps = ([0, max_step] if max_step else [0]) if spec.use_priorities else range(max_step + 1)
+    for step in steps:
         remaining = time_limit - (monotonic() - started)
         if remaining <= 0:
             result['status'] = 'time_limit'
             break
         kwargs = {'case_options': groups} if timing else {}
+        if spec.use_priorities:
+            kwargs['priority_outcomes'] = result['priority_outcomes']
         status, selected_options = solve_attempt(list(options), objective, limits + mix_limits, spec, step, remaining, **kwargs)
         attempts.append({'relaxation_pct': step, 'status': status})
         result['status'] = status
@@ -633,18 +729,19 @@ def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, t
         checks = constraint_checks(limits, selected_options, step)
         shares = mix_checks(candidate_cases, headline['production'], selected_options, spec)
         if (len(selected) != len(chosen) or not all(c['satisfied'] for c in checks + shares)
-                or not set(spec.mandatory_case_ids).issubset(selected) or set(spec.excluded_case_ids) & set(selected)):
+                or not set(spec.mandatory_case_ids).issubset(selected) or set(spec.excluded_case_ids) & set(selected)
+                or any(options[chosen[i]]['operation'] != 'NoChange' for i in spec.reference_case_ids if i in chosen)):
             raise ValueError('Solver recommendation failed independent constraint checks')
         if selected:
             names = cases.set_index('ID').Case
-            instructions = pd.DataFrame([timing_instruction(i, names[i], options[chosen[i]]['operation'],
-                                                              options[chosen[i]]['year_shift']) for i in selected])
+            instructions = pd.DataFrame([operation_instruction(i, names[i], options[chosen[i]]['operation'],
+                                                              options[chosen[i]]['params']) for i in selected])
             run = execute_scenario(raw_profiles, instructions, cases, tax_rates)
             if not run.valid:
                 raise ValueError('Recommended selection failed scenario execution')
             replay_constraints = restricted_constraints(spec.constraints, selected)
             _, replay_objective, replay_limits, replay_headline = prepare_coefficients(run.results, cases.loc[cases.ID.isin(selected)],
-                OptimisationSpec(spec.year_from, spec.year_to, replay_constraints, objective=spec.objective))
+                OptimisationSpec(spec.year_from, spec.year_to, replay_constraints, objective=spec.objective), limits)
             if any(not math.isclose(objective[chosen[i]], replay_objective[i], rel_tol=1e-8, abs_tol=1e-6) for i in selected):
                 raise ValueError('Recommendation objective does not reconcile with the scenario engine')
             for original, replay in zip(limits, replay_limits):
@@ -659,14 +756,25 @@ def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, t
             result['reconciled'] = True
         else:
             result['diagnostics'] = ['The best selection is empty. Require a case or a positive production floor to create an editable scenario.']
+        if monotonic() - started >= time_limit:
+            result.update(status='time_limit', priority_outcomes=[], diagnostics=[], reconciled=False,
+                          solve_time_ms=round((monotonic() - started) * 1000))
+            return result
+        if spec.use_priorities:
+            for check in checks:
+                check['allowed_pct'] = min(check['flexibility_pct'], check['breach_pct'])
+                check['adjusted_target'] = adjusted_target(check, check['allowed_pct'])
+                check['headroom'] = (check['adjusted_target'] - check['actual']) * (1 if check['operator'] == 'max' else -1)
         case_names = cases.set_index('ID')
         result.update(status='optimal', selected_case_ids=selected, excluded_case_ids=[i for i in ids if i not in chosen],
             relaxation_pct=step, objective_value=sum(objective[key] for key in selected_options), constraint_checks=checks, mix_checks=shares,
+            post_tax_fcf=sum(headline['post_tax_fcf'][key] for key in selected_options),
             capex=sum(headline['capex'][key] for key in selected_options), production=sum(headline['production'][key] for key in selected_options),
             cases=[{'id': i, 'name': str(case_names.loc[i].get('Case Name', case_names.loc[i, 'Case'])),
                     'selected': i in chosen, 'objective_contribution': objective[chosen.get(i, i)],
                     'npv': headline['npv'][chosen.get(i, i)], 'capex': headline['capex'][chosen.get(i, i)],
                     'production': headline['production'][chosen.get(i, i)],
+                    'params': options[chosen.get(i, i)]['params'],
                     'operation': options[chosen.get(i, i)]['operation'], 'year_shift': options[chosen.get(i, i)]['year_shift'],
                     'constraint_contributions': [{'id': c['id'], 'year_from': c['year_from'], 'year_to': c['year_to'],
                                                   'value': c['coefficients'][chosen.get(i, i)]} for c in limits]} for i in ids])

@@ -2,6 +2,10 @@
 
 ## Current scope — 16 September 2026
 
+See the [implemented next-steps plan](Portfolio-Optimiser-Next-Steps-Plan.md) for FCF/relative constraints, priorities, reference locks by plan type, Delay/Accelerate switches and direct Run/Modify recommendation actions. It supersedes the baseline description below. Other operations remain deferred by user instruction.
+
+### Earlier baseline
+
 The optimiser uses one workflow: **Objective → Constraints → Run**, with optional **Advanced controls** in a side pane. Mix targets start off; all cases are available for the optimiser to choose. The pane contains oil/gas and regional production-share targets plus hierarchical Region → Country → Case selections. Changes remain active when the pane closes; the main page summarises enabled mix targets and effective required/excluded case counts. Clear advanced controls resets only those optional controls, retaining the objective, period and constraints. All four objectives remain available. The [remediation plan's current implementation section](Portfolio-Optimiser-Remediation-Plan.md#current-implementation--simplified-scope-16-september-2026) records the governing decisions and checks. The original agreement and subsequent examples below are historical design material, superseded by this current scope.
 
 ### Feature branch: optional timing and constraint-period contributions

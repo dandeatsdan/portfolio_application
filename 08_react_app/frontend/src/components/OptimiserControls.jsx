@@ -1,21 +1,21 @@
-import { CONTROL_LABELS, countryRuleKey, dimensionValue, effectiveCaseRule } from '../pages/optimiserHelpers'
+import { CONTROL_LABELS, countryRuleKey, dimensionValue, effectiveCaseRule, effectiveCaseControl, planTypeValue } from '../pages/optimiserHelpers'
 
-function RuleSelect({ label, value, inherited, onChange, individual = false }) {
+function RuleSelect({ label, value, inherited, onChange }) {
   return <label className="optimiser-control-choice">{label}
     <select value={value ?? 'inherit'} onChange={e => onChange(e.target.value)}>
       {inherited && <option value="inherit">Inherit — {CONTROL_LABELS[inherited]}</option>}
-      <option value="optional">Optimiser chooses</option>
-      <option value="mandatory">{individual ? 'Include' : 'Include all'}</option>
-      <option value="excluded">{individual ? 'Exclude' : 'Exclude all'}</option>
+      <option value="optional">Allow to be modelled</option>
+      <option value="reference">Keep as per reference</option>
+      <option value="excluded">Exclude</option>
     </select>
   </label>
 }
 
 function Counts({ cases, draft }) {
   const states = cases.map(c => effectiveCaseRule(draft, c))
-  return <small className="text-muted">Effective: {states.filter(s => s === 'mandatory').length} included ·{' '}
+  return <small className="text-muted">Effective: {states.filter(s => s === 'reference').length} kept as reference ·{' '}
     {states.filter(s => s === 'excluded').length} excluded ·{' '}
-    {states.filter(s => s === 'optional').length} optimiser chooses</small>
+    {states.filter(s => s === 'optional').length} allowed to be modelled{states.includes('conflict') && ` · ${states.filter(s => s === 'conflict').length} conflicting`}</small>
 }
 
 export default function OptimiserControls({ cases, draft, onChange }) {
@@ -27,6 +27,13 @@ export default function OptimiserControls({ cases, draft, onChange }) {
     onChange({ [field]: rules })
   }
   return <div className="optimiser-control-tree">
+    <h4>Plan type</h4>
+    {[...new Set(cases.map(c => planTypeValue(c.plan_type)))].sort().map(plan => <div className="optimiser-control-row" key={plan}>
+      <div><strong>{plan}</strong><Counts cases={cases.filter(c => planTypeValue(c.plan_type) === plan)} draft={draft} /></div>
+      <RuleSelect label={`Plan type: ${plan}`} value={draft.plan_type_rules?.[plan] ?? 'optional'}
+        onChange={rule => edit('plan_type_rules', plan, rule)} />
+    </div>)}
+    <h4>Geography and cases</h4>
     {regions.map(region => {
       const regionCases = cases.filter(c => dimensionValue(c.region) === region)
       const countries = [...new Set(regionCases.map(c => dimensionValue(c.country)))].sort()
@@ -41,7 +48,6 @@ export default function OptimiserControls({ cases, draft, onChange }) {
           {countries.map(country => {
             const key = countryRuleKey(region, country)
             const countryCases = regionCases.filter(c => dimensionValue(c.country) === country)
-            const countryRule = draft.country_rules[key] ?? regionRule
             return <div key={key} className="optimiser-control-country">
               <div className="optimiser-control-row">
                 <div><strong>{country}</strong><Counts cases={countryCases} draft={draft} /></div>
@@ -51,8 +57,8 @@ export default function OptimiserControls({ cases, draft, onChange }) {
               <details>
                 <summary>Cases ({countryCases.length})</summary>
                 {countryCases.map(c => <div className="optimiser-control-row optimiser-control-case" key={c.id}>
-                  <div>{c.case_name}<small className="text-muted">ID {c.id} · {CONTROL_LABELS[effectiveCaseRule(draft, c)]}</small></div>
-                  <RuleSelect individual label={`Case: ${c.case_name} (ID ${c.id})`} value={draft.case_rules[c.id]} inherited={countryRule}
+                  <div>{c.case_name}<small className="text-muted">ID {c.id} · {CONTROL_LABELS[effectiveCaseRule(draft, c)]} · {effectiveCaseControl(draft, c).source}</small></div>
+                  <RuleSelect label={`Case: ${c.case_name} (ID ${c.id})`} value={draft.case_rules[c.id]} inherited={effectiveCaseRule({ ...draft, case_rules: {} }, c)}
                     onChange={rule => edit('case_rules', c.id, rule)} />
                 </div>)}
               </details>

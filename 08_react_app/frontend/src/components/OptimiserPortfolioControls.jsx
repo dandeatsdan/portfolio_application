@@ -1,7 +1,9 @@
+import Toggle from './Toggle'
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
+import OptimiserOperations from './OptimiserOperations'
 import OptimiserControls from './OptimiserControls'
-import { changeMixShare, excludeRegionShares, excludedRegionRules, mixTotal, runGateBlocked, timingBlocked } from '../pages/optimiserHelpers'
+import { changeMixShare, excludeRegionShares, excludedRegionRules, mixTotal, runGateBlocked, METRIC_LABELS } from '../pages/optimiserHelpers'
 import './ReferenceConfig.css'
 
 const fmt = value => value == null ? '—' : Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })
@@ -12,7 +14,7 @@ function MixSection({ title, section, reference, onChange, onReset, excluded = [
     <div className="optimiser-mix-section">
       <div className="optimiser-mix-heading">
         <label className="optimiser-check-label">
-          <input type="checkbox" checked={section.enabled}
+          <Toggle checked={section.enabled}
             onChange={e => onChange({ ...section, enabled: e.target.checked })} />
           {title}
         </label>
@@ -68,30 +70,23 @@ export default function OptimiserPortfolioControls({ cases, draft, reference, re
       <button type="button" className="reference-config__close" aria-label="Close advanced controls" onClick={onClose}><X size={20} /></button>
     </header>
     <div className="reference-config__content">
-      <section aria-labelledby="timing-title">
-        <h3 id="timing-title">Timing</h3>
-        <p className="text-small text-muted">Let the optimiser compare unchanged cases with earlier or later profiles.
-          Pure year shifts: no penalties, acquisition costs or extra Capex. Tax rates and discounting follow the shifted years.</p>
-        <label className="optimiser-check-label">
-          <input type="checkbox" checked={draft.timing.enabled}
-            onChange={event => onChange({ timing: { ...draft.timing, enabled: event.target.checked } })} />
-          Allow timing changes
-        </label>
-        {draft.timing.enabled && <>
-          <div className="optimiser-objective">
-            <label>Maximum delay (years)
-              <input type="number" min="0" max="14" step="1" value={draft.timing.max_delay_years}
-                onChange={e => onChange({ timing: { ...draft.timing, max_delay_years: e.target.value } })} />
-            </label>
-            <label>Maximum acceleration (years)
-              <input type="number" min="0" max="14" step="1" value={draft.timing.max_acceleration_years}
-                onChange={e => onChange({ timing: { ...draft.timing, max_acceleration_years: e.target.value } })} />
-            </label>
-          </div>
-          <p className="text-small text-muted">Use 0 to turn off a direction. Each included case gets one option.
-            Shifts that move nonzero values outside 2026–2040 are unavailable.</p>
-          {timingBlocked(draft) && <p role="alert">Enter whole years from 0 to 14, with at least one direction above zero.</p>}
-        </>}
+      <OptimiserOperations draft={draft} onChange={onChange} />
+      <section aria-labelledby="constraint-priorities-title">
+        <h3 id="constraint-priorities-title">Constraint priorities</h3>
+        <label className="optimiser-check-label"><Toggle checked={draft.use_priorities}
+          onChange={e => onChange({ use_priorities: e.target.checked })} />Use ordered priorities</label>
+        <p className="text-small text-muted">Strict limits always hold. If flexible targets conflict, protect higher priorities first, then maximise your objective.
+          Within a priority, weights compare percentage breaches; annual rules use their average across years.</p>
+        {draft.use_priorities && (draft.constraints.length ? draft.constraints.map((c, i) => <div className="optimiser-operation" key={c.id}>
+          <strong>C{i + 1}: {METRIC_LABELS[c.metric]} · {c.year_from}–{c.year_to}</strong>
+          {Number(c.flexibility_pct) === 0 ? <p className="text-small">Strict — always binding</p> : <div className="optimiser-operation-inputs">
+            <label>Priority for C{i + 1}<select value={c.priority ?? 2} onChange={e => onChange({ constraints: draft.constraints.map(v => v.id === c.id ? { ...v, priority: Number(e.target.value) } : v) })}>
+              <option value="1">1 — Highest</option><option value="2">2 — Medium</option><option value="3">3 — Lowest</option>
+            </select></label>
+            <label>Weight for C{i + 1}<input type="number" min="0.01" max="100" step="0.01" value={c.weight ?? 1}
+              onChange={e => onChange({ constraints: draft.constraints.map(v => v.id === c.id ? { ...v, weight: e.target.value } : v) })} /></label>
+          </div>}
+        </div>) : <p>Add constraints on the main page to set their priorities.</p>)}
       </section>
       <section aria-labelledby="portfolio-mix-title">
         <h3 id="portfolio-mix-title">Portfolio mix</h3>
@@ -114,10 +109,10 @@ export default function OptimiserPortfolioControls({ cases, draft, reference, re
       </section>
       <section aria-labelledby="case-selection-title">
         <h3 id="case-selection-title">Case selection</h3>
-        <p className="text-small text-muted">Choose by region, then refine by country and case. A country overrides its region; a case overrides both.
-          Inherit follows the parent rule. Optimiser chooses removes that restriction. Existing more-specific choices remain in effect when a parent changes.</p>
+        <p className="text-small text-muted">Keep as per reference includes cases unchanged. Allow to be modelled lets the optimiser choose. Exclude retains cases in the scenario shortlist with Include off.
+          Country choices override region choices; explicit case choices override geography and plan type. Conflicting group rules need a case choice. Inherit resets a local override.</p>
         <label className="optimiser-check-label">
-          <input type="checkbox" checked={showCaseSelection} aria-controls="optimiser-case-selection"
+          <Toggle checked={showCaseSelection} aria-controls="optimiser-case-selection"
             onChange={event => setShowCaseSelection(event.target.checked)} />
           Show case selection
         </label>

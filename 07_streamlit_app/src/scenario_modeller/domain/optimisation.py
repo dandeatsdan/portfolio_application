@@ -31,7 +31,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Constraint:
     id: str
-    metric: str  # capex or production
+    metric: str  # capex, production or post_tax_fcf
     basis: str  # total or each_year
     year_from: int
     year_to: int
@@ -39,6 +39,10 @@ class Constraint:
     target: float
     flexibility_pct: int = 0
     case_ids: tuple[int, ...] | None = None  # when set, constraint applies only to these cases
+    target_basis: str = 'absolute'  # relative resolves against the original scoped reference
+    relative_pct: float = 0  # negative lowers the target, positive raises it
+    priority: int = 2  # 1 is highest; only used when priorities are enabled
+    weight: float = 1
 
 
 @dataclass(frozen=True)
@@ -91,3 +95,12 @@ class OptimisationSpec:
     case_rules: tuple[CaseRule, ...] = ()
     max_delay_years: int = 0
     max_acceleration_years: int = 0
+    plan_type_rules: tuple['PlanTypeRule', ...] = ()
+    reference_case_ids: tuple[int, ...] = ()  # included at NoChange; legacy mandatory permits timing
+    use_priorities: bool = False
+
+
+@dataclass(frozen=True)
+class PlanTypeRule:
+    plan_type: str
+    rule: str

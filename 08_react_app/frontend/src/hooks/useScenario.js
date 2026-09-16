@@ -4,6 +4,7 @@
  * scenarioState: { name, description, rationale, cases: { [id]: {include, operation, params[]} } }
  */
 import { useState, useCallback, useContext, useEffect } from 'react'
+import { scenarioRunPayload } from './recommendationRun.js'
 import { WorkingScenarioContext } from './WorkingScenarioContext'
 import { runScenario } from '../api/client'
 import { buildScenarioInstructions, defaultCase } from './scenarioInstructions'
@@ -50,7 +51,7 @@ export function useScenario(cases, shortlistIds) {
     setRunError(null)
     setDiagnostics([])
     try {
-      const data = await runScenario({ scenario_name: name, scenario_description: description, rationale, instructions })
+      const data = await runScenario(scenarioRunPayload({ name, description, rationale, shortlisted_case_ids: [...shortlistIds], case_configurations: caseConfig }, cases))
       if (!data.valid) throw new Error('Scenario did not produce a valid result.')
       setResult({ ...data, savedScenarioId })
     } catch (err) {
@@ -59,7 +60,7 @@ export function useScenario(cases, shortlistIds) {
     } finally {
       setRunning(false)
     }
-  }, [name, description, rationale, instructions, includedCount])
+  }, [name, description, rationale, instructions, includedCount, cases, shortlistIds, caseConfig])
 
   return {
     name, setName,

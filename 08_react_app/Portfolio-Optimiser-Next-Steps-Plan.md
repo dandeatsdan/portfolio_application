@@ -1,10 +1,39 @@
 # Portfolio optimiser — next steps
 
-Date: 16 September 2026. Status: proposed implementation plan following user feedback.
+Date: 16 September 2026. Status: implemented, with the scope amendments below.
 
-The existing timing alternatives, constraint-period columns and rename to **Advanced controls** form the baseline. The capabilities below are planned, not implemented. Additional metadata ingestion is out of scope for this work.
+The existing timing alternatives, constraint-period columns and rename to **Advanced controls** form the baseline. Steps 1–5 are implemented. Per the subsequent user instruction, operations other than Delay and Accelerate are deferred. Additional metadata ingestion remains out of scope.
+
+## Implementation and subsequent user decisions
+
+- Independent **Allow Delay** and **Allow Accelerate** switches replace the combined checkbox. Advanced-control booleans use accessible switches. Limits are retained while off and omitted from the solve until enabled.
+- FCF constraints support total/annual periods, signed targets, timing alternatives and scoped cases. Negative-target flexibility widens in the correct direction.
+- Region, country, plan-type and case controls offer **Keep as per reference**, **Allow to be modelled** and **Exclude**. Exclusions remain shortlisted with Include false. Reference locks prohibit all changes. The legacy API's `mandatory` rule retains its original inclusion-only meaning; the UI uses the new `reference` rule.
+- Absolute or reference-relative targets use server-computed previews. Annual targets use each year's own baseline. Nonpositive relative baselines require an absolute value. Reference fingerprints prevent stale previews/recommendations from silently using a changed dataset.
+- Optional ordered priorities protect higher-priority flexible constraints first. Weights act within a priority; annual rules use mean normalised violation. Strict limits and adjustment caps remain binding. The existing 1% relaxation behaviour remains when priorities are off.
+- **Run recommended scenario** saves a new scenario, runs it, and opens Results. **Modify recommended scenario** opens an unsaved builder copy. Both protect existing unsaved edits. Failed runs retain their saved definition for retry; stale responses cannot replace newer work.
+- Desktop constraint fields remain on one compact row, using different widths for different fields. Narrow screens wrap. Reference previews appear underneath. Recommendation actions align right and the step badge is **4**.
+- Steps 1–5 complete the implementation described here; the earlier baseline commits remain part of the branch history.
+
+Validation: **267 Python/API tests**, **102 frontend tests**, and the production build passed. Existing Python deprecation warnings and the Vite bundle-size warning remain. Browser checks against the local application confirmed reference previews, plan-type reference selection, independent timing switches, FCF-constrained NPV optimisation, Modify → builder with shortlisted exclusions, cancellation of unsaved-edits replacement, and Run → saved scenario → Results. The browser-created test scenario was deleted by its captured ID. Desktop and 390px mobile layouts were checked; the mobile pane had no horizontal overflow and no browser runtime errors were reported.
+
+## Follow-on ideas, not implemented
+
+Case-specific delay penalties and dependencies between cases were discussed during implementation. A dependency must distinguish equal shifts, a sequencing relationship, and whether the dependent case must be included. Implement structured, validated inputs and solver rules first. A later chat interface can translate language into those visible rules for review. It must use the same calculation and validation path. Penalties, dependencies, chat entry, other operations and broader metadata are deferred.
 
 Baseline committed as `17c6139`. Verification: all 245 Python/API tests and all 12 frontend test files passed; the production build passed with its existing bundle-size warning. Python/API tests required execution outside the sandbox because the sandboxed API test client stalled in its event loop.
+
+## Excel exports — recorded for later implementation
+
+User decision: record this work in the plan now; do not implement export buttons in this update. Provide real `.xlsx` workbooks at the points where a user pauses to review or share a decision:
+
+| Location | Workbook contents |
+| --- | --- |
+| Optimiser recommendation | Objective and dates; reference/version metadata; advanced settings; case decisions and timing; reference/target/actual constraint checks, priorities and adjustments; per-case constraint contributions. |
+| Scenario builder | Current working definition, scenario metadata/rationale, included and excluded cases, shortlist status, operations and all parameter values. Clearly identify unsaved edits. |
+| Scenario Results | Reference and scenario KPI values, differences, annual metric profiles, case contributions and comparison metadata. Include the active dates and filter scope. |
+
+Export the exact snapshot being reviewed; do not optimise, save or run implicitly. State which views are filtered and whether the workbook includes the full portfolio. Preserve numeric cell types, metric units, cash-flow sign conventions and readable sheet names; keep input assumptions distinct from calculated results. Include export time and data/scenario identity. Verify workbook totals against the application, annual units, exclusions and timing, multiple comparisons, empty data, long labels, and text beginning with Excel formula characters. Export must not change the working scenario.
 
 ## Intended experience
 
@@ -15,7 +44,7 @@ After a verified recommendation, offer two actions:
 - **Run recommended scenario**: create the normal scenario definition, save it as a new scenario, run it and open Results without visiting Build a Scenario.
 - **Modify recommended scenario**: open the recommendation as an unsaved working scenario in Build a Scenario, using the current hand-off.
 
-Saving before the direct run is the proposed default because Build a Scenario already uses Save and run. Make this behaviour clear beside the action. Optimisation itself still produces a recommendation for review; it does not automatically save or run a scenario.
+Saving before the direct run is the implemented default because Build a Scenario already uses Save and run. Make this behaviour clear beside the action. Optimisation itself still produces a recommendation for review; it does not automatically save or run a scenario.
 
 ## 1. Allowed operations
 
@@ -23,7 +52,7 @@ Replace the combined timing switch with an **Allowed operations** section. Start
 
 An enabled toggle gives the optimiser permission to use an operation; it does not require the operation. Keep as per reference cases get exactly their unchanged alternative; cases allowed to be modelled get at most one alternative, including the possibility of not being selected; excluded cases get none. Preserve the current complete-profile horizon checks and shared tax/valuation calculations.
 
-Add other existing scenario operations incrementally: Farm In, Farm Down, Truncate Before/After, Production Change, OPEX Change and CAPEX Change. Each needs a defined, bounded candidate set and its applicable costs/penalties before it can be enabled. For example, a production uplift cannot become a free unlimited improvement just because its operation toggle is on. Reuse the operation catalogue and validation rules; do not advertise unsupported operations as usable.
+**Deferred by the user: do not expose these operations in the current optimiser.** Future candidates include: Farm In, Farm Down, Truncate Before/After, Production Change, OPEX Change and CAPEX Change. Each needs a defined, bounded candidate set and its applicable costs/penalties before it can be enabled. For example, a production uplift cannot become a free unlimited improvement just because its operation toggle is on. Reuse the operation catalogue and validation rules; do not advertise unsupported operations as usable.
 
 Initially choose a single operation per case, matching the current scenario definition. Combining operations on one case requires a separate scenario-contract change. Cap the alternative count, include preparation in the solve budget, report omitted alternatives and retain independent scenario replay.
 
@@ -54,7 +83,7 @@ User clarification: **must use means keep the reference case as is**. Use these 
 
 Use the already loaded `plan_type` metadata for the new Plan type group in Advanced controls. Do not add a separate user-facing Require inclusion choice: it would allow changes to a case the user intended to preserve. Migrate the existing UI's mandatory controls to explicit reference locks; retain legacy API inclusion semantics for existing clients through a separate field or versioned contract rather than silently reinterpreting older requests.
 
-Plan type overlaps geography, so it must not be treated as another Region → Country → Case level. Proposed resolution:
+Plan type overlaps geography, so it must not be treated as another Region → Country → Case level. Implemented resolution:
 
 1. Resolve the existing Region → Country hierarchy, preserving geographic inheritance. An unset child inherits; an explicit Allow to be modelled clears its inherited geographic restriction.
 2. Combine that result with the plan-type rule. Allow to be modelled adds no restriction. Keep as per reference versus Exclude is a conflict.
@@ -82,7 +111,7 @@ Compute the baseline server-side from the original unshifted loaded reference, u
 
 Show the reference value and resulting numerical limit before solving. Return both, the requested percentage, actual value and any relaxation in the result. Keep reference adjustment and permitted relaxation separate: the relative setting defines the requested target; flexibility defines how far that target may subsequently move.
 
-Proposed first-release boundary: allow percentage-relative targets only when every relevant reference total/year is positive. For zero or negative reference values, explain the issue and require an absolute target rather than silently reversing the meaning of higher/lower. Absolute signed FCF remains supported. Explicitly validate percentage ranges by metric and rule, including 100% lower and increases above 100%.
+Implemented first-release boundary: allow percentage-relative targets only when every relevant reference total/year is positive. For zero or negative reference values, explain the issue and require an absolute target rather than silently reversing the meaning of higher/lower. Absolute signed FCF remains supported. Explicitly validate percentage ranges by metric and rule, including 100% lower and increases above 100%.
 
 Acceptance: total and differing annual baselines, scoped reference values, Capex expenditure signs, independent objective dates, zero/negative baseline handling, timing-invariant baselines and clear requested-versus-relaxed targets. Changes to reference data invalidate stale previews/recommendations.
 
@@ -90,17 +119,17 @@ Acceptance: total and differing annual baselines, scoped reference values, Capex
 
 Treat this as a policy for relaxing flexible constraints. Every strict constraint remains binding regardless of priority. If all original limits can be met, maximise the chosen objective normally.
 
-Recommend ordered priority levels first, because “Capex must take precedence over Production” is stronger than a numerical weight. A weighted sum can trade some Capex breach for a larger Production improvement; it does not guarantee precedence.
+Use ordered priority levels first, because “Capex must take precedence over Production” is stronger than a numerical weight. A weighted sum can trade some Capex breach for a larger Production improvement; it does not guarantee precedence.
 
 When the original problem is proven infeasible, use bounded violation variables for flexible limits. Minimise normalised violation at the highest priority, fix that best value within a documented numerical tolerance, and proceed to lower priorities. Finally maximise NPV or the chosen objective while preserving those best priority outcomes. All passes share the existing time budget; inconclusive passes must not produce an optimal recommendation.
 
 - Never exceed each constraint's allowed adjustment. Case rules, unchanged locks and mix bands remain strict.
 - Normalise violations by the absolute requested target so $m and production units are comparable. Keep zero targets strict initially.
 - For each-year rules, propose mean normalised violation across their years so a longer window does not acquire greater weight solely from more rows. Document and test this choice.
-- Optionally add explicit weights within a priority level after validating the priority model. Do not mix raw $m and production deviations, or mix constraint penalties directly into NPV with arbitrary units.
+- Explicit weights within a priority level are implemented. Do not mix raw $m and production deviations, or mix constraint penalties directly into NPV with arbitrary units.
 - Return original targets, achieved values, violations, priority and capped allowances. Replace the single global relaxation percentage with per-constraint outcomes when priority mode is used.
 
-This deliberately differs from today's shared 1% relaxation steps. Preserve legacy behaviour when priorities are not enabled; choose migration/default behaviour explicitly when introducing the new mode. Put priority editing in Advanced controls, keyed by stable constraint IDs, with priority indicators beside the main constraint rows.
+This deliberately differs from the legacy shared 1% relaxation steps. Legacy behaviour remains when priorities are not enabled; priorities start off. Put priority editing in Advanced controls, keyed by stable constraint IDs, with priority indicators beside the main constraint rows.
 
 Acceptance: conflicting Capex/Production/FCF targets; higher-priority violations never worsen to benefit lower priorities; strict and capped limits; equal-priority normalisation; annual aggregation; signed targets; final objective tie-breaking; infeasibility and timeout reporting.
 
@@ -121,13 +150,13 @@ Acceptance: direct action and modify-then-run produce identical definitions and 
 | Step | Deliverable | Reason |
 | --- | --- | --- |
 | 0 — complete | Commit current timing work, constraint-period columns and Advanced controls rename | Verified baseline: `17c6139`. |
-| 1 | Independent Delay/Accelerate toggles and two recommendation actions | Improve control and remove the unnecessary builder visit. |
-| 2 | FCF constraints with explicit metric/unit handling | Support NPV optimisation with a cash-generation floor. |
-| 3 | Three consistent case-control choices and plan-type reference locks | Express what the starting portfolio must retain. |
-| 4 | Reference-relative targets and baseline previews | Express budget/production ambitions without manual calculations. |
-| 5 | Ordered constraint priorities, then optional weights within levels | Add explainable trade-offs once target semantics are stable. |
-| 6 | Further operations with bounded, validated parameters | Expand decisions without uncontrolled alternative growth. |
+| 1 — complete | Independent Delay/Accelerate toggles and two recommendation actions | Improve control and remove the unnecessary builder visit. |
+| 2 — complete | FCF constraints with explicit metric/unit handling | Support NPV optimisation with a cash-generation floor. |
+| 3 — complete | Three consistent case-control choices and plan-type reference locks | Express what the starting portfolio must retain. |
+| 4 — complete | Reference-relative targets and baseline previews | Express budget/production ambitions without manual calculations. |
+| 5 — complete | Ordered constraint priorities, then optional weights within levels | Add explainable trade-offs once target semantics are stable. |
+| 6 — deferred | Further operations with bounded, validated parameters | Expand decisions without uncontrolled alternative growth. |
 
 For each increment, update the domain/API contract, shared solver, UI, scenario rationale and focused regression coverage together. Verify representative end-to-end browser flows when behaviour changes. Retain independent enumeration and full scenario replay for changes to optimiser mathematics. Broader metadata expansion remains deferred.
 
-Proposals to settle during implementation are clearly stated above: cross-dimension conflict resolution, save-before-direct-run, percentage behaviour for nonpositive references, and within-priority annual aggregation. The three case-control choices and the meaning of Keep as per reference are confirmed user requirements. None of the remaining proposals blocks committing the current baseline.
+The implemented policies are documented above: explicit case overrides resolve cross-dimension conflicts; direct run saves first; relative baselines must be positive; annual priority violations are averaged. Other operations are deferred by user request. Case-specific penalties, dependencies and chat entry remain follow-on work.

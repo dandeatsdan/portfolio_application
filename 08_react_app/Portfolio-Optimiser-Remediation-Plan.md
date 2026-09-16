@@ -1,6 +1,10 @@
 # Portfolio Optimiser Remediation and Improvement Plan
 
-## Current implementation — simplified scope, 16 September 2026
+## Current extension — advanced controls, 16 September 2026
+
+The [next-steps plan](Portfolio-Optimiser-Next-Steps-Plan.md) records the implemented FCF and reference-relative constraints, ordered priorities, plan-type/reference locks, independent Delay/Accelerate switches and direct recommendation actions. Later user instructions defer all other operations, use switches in Advanced controls, preserve a single desktop constraint row and right-align recommendation actions under step 4. Verification: 267 Python/API tests, 102 frontend tests, production build and browser checks of both hand-off paths passed. Subsequent documentation there supersedes the earlier baseline sections below.
+
+## Previous implementation — simplified scope, 16 September 2026
 
 The current user decisions supersede the historical recommendations below.
 

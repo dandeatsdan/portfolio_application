@@ -104,3 +104,6 @@ export const deleteSavedScenario = id => api.delete(`/api/scenarios/${encodeURIC
 export const getResultsAnalysis = payload => api.post('/api/scenario/analysis', payload)
 
 export const solveOptimisation = payload => api.post('/api/optimisation/solve', payload, { timeout: 60000 })
+
+export const previewOptimisation = payload => api.post('/api/optimisation/preview', payload)
+export const getOptimisationReferenceVersion = () => api.get('/api/optimisation/reference-version')

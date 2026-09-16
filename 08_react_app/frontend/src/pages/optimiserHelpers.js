@@ -9,17 +9,18 @@ export const OBJECTIVES = [
 ]
 export const DEFAULT_OPTIMISER = {
   year_from: 2026, year_to: 2040, objective: 'post_tax_npv',
-  constraints: [], region_rules: {}, country_rules: {}, case_rules: {},
+  constraints: [], region_rules: {}, country_rules: {}, case_rules: {}, plan_type_rules: {},
+  use_priorities: false,
   group_entity_mix: { enabled: false, tolerance: 5, sliders: {} },
   region_mix: { enabled: false, tolerance: 5, sliders: {} },
-  timing: { enabled: false, max_delay_years: 2, max_acceleration_years: 2 },
+  timing: { delay_enabled: false, acceleration_enabled: false, max_delay_years: 2, max_acceleration_years: 2 },
 }
 
 export const hasMixTargets = draft => draft.group_entity_mix.enabled || draft.region_mix.enabled
 
 export function clearPortfolioControls(shares) {
   return {
-    region_rules: {}, country_rules: {}, case_rules: {},
+    region_rules: {}, country_rules: {}, case_rules: {}, plan_type_rules: {}, use_priorities: false,
     group_entity_mix: { ...DEFAULT_OPTIMISER.group_entity_mix, sliders: shares?.group_entity ?? {} },
     region_mix: { ...DEFAULT_OPTIMISER.region_mix, sliders: shares?.region ?? {} },
     timing: { ...DEFAULT_OPTIMISER.timing },
@@ -27,21 +28,33 @@ export function clearPortfolioControls(shares) {
 }
 
 export function newConstraint(id) {
-  return { id, metric: 'capex', basis: 'total', year_from: 2026, year_to: 2028, operator: 'max', target: '', flexibility_pct: 0 }
+  return { id, metric: 'capex', basis: 'total', year_from: 2026, year_to: 2028, operator: 'max', target: '', flexibility_pct: 0, target_basis: 'absolute', relative_pct: 0, priority: 2, weight: 1 }
 }
 
 export function constraintUnit(c) {
-  return c.metric === 'capex' ? '$m' : c.basis === 'total' ? 'mmboe' : 'mboed'
+  return c.metric !== 'production' ? '$m' : c.basis === 'total' ? 'mmboe' : 'mboed'
 }
 
 export const dimensionValue = value => value || 'Unknown'
 export const countryRuleKey = (region, country) => JSON.stringify([dimensionValue(region), dimensionValue(country)])
-export const CONTROL_LABELS = { optional: 'Optimiser chooses', mandatory: 'Included', excluded: 'Excluded' }
+export const CONTROL_LABELS = { optional: 'Allow to be modelled', reference: 'Keep as per reference', mandatory: 'Included', excluded: 'Exclude', conflict: 'Conflicting rules' }
+export const METRIC_LABELS = { capex: 'Cash Capex', production: 'Production', post_tax_fcf: 'Free Cash Flow' }
+export const planTypeValue = value => value || 'Unspecified'
 
-export function effectiveCaseRule(draft, c) {
-  return draft.case_rules?.[c.id] ?? draft.country_rules?.[countryRuleKey(c.region, c.country)] ??
-    draft.region_rules?.[dimensionValue(c.region)] ?? 'optional'
+export function effectiveCaseControl(draft, c) {
+  const explicit = draft.case_rules?.[c.id]
+  if (explicit) return { rule: explicit, source: 'Case' }
+  const country = draft.country_rules?.[countryRuleKey(c.region, c.country)]
+  const geography = country ?? draft.region_rules?.[dimensionValue(c.region)] ?? 'optional'
+  const plan = draft.plan_type_rules?.[planTypeValue(c.plan_type)] ?? 'optional'
+  const source = country ? 'Country' : 'Region'
+  if (plan === 'optional') return { rule: geography, source: geography === 'optional' ? 'Default / geography' : source }
+  if (geography === 'optional' || geography === plan) return { rule: plan, source: geography === plan ? `${source} + Plan type` : 'Plan type' }
+  if ([plan, geography].every(r => ['mandatory', 'reference'].includes(r))) return { rule: 'reference', source: `${source} + Plan type` }
+  return { rule: 'conflict', source: `${source} + Plan type` }
 }
+
+export const effectiveCaseRule = (draft, c) => effectiveCaseControl(draft, c).rule
 
 export function excludedRegionRules(draft, cases) {
   const regions = [...new Set(cases.map(c => dimensionValue(c.region)))]
@@ -119,18 +132,29 @@ export function runGateBlocked(draft) {
   ))
 }
 
+export function timingLimit(draft, direction) {
+  const timing = draft.timing ?? {}
+  return (timing[`${direction}_enabled`] ?? timing.enabled) ? Number(timing[`max_${direction}_years`]) : 0
+}
+
 export function timingBlocked(draft) {
-  if (!draft.timing?.enabled) return false
-  const values = [draft.timing.max_delay_years, draft.timing.max_acceleration_years]
-  return values.some(v => String(v).trim() === '' || !Number.isInteger(Number(v)) || v < 0 || v > 14)
-    || values.every(v => Number(v) === 0)
+  const timing = draft.timing ?? {}
+  const directions = ['delay', 'acceleration'].filter(d => timing[`${d}_enabled`] ?? timing.enabled)
+  if (!directions.length) return false
+  return directions.some(d => {
+    const v = timing[`max_${d}_years`]
+    return String(v ?? '').trim() === '' || !Number.isInteger(Number(v)) || v < (typeof timing[`${d}_enabled`] === 'boolean' ? 1 : 0) || v > 14
+  }) || directions.every(d => timingLimit(draft, d) === 0)
 }
 
 export function timingLabel(c) {
   if (!c.selected) return '—'
-  if (!c.year_shift) return 'Unchanged'
-  const years = Math.abs(c.year_shift)
-  return `${c.year_shift > 0 ? 'Delay' : 'Accelerate'} ${years} ${years === 1 ? 'year' : 'years'}`
+  if (c.year_shift) {
+    const years = Math.abs(c.year_shift)
+    return `${c.year_shift > 0 ? 'Delay' : 'Accelerate'} ${years} ${years === 1 ? 'year' : 'years'}`
+  }
+  if (!c.operation || c.operation === 'NoChange') return 'Unchanged'
+  return 'Unchanged'
 }
 
 export function constraintPeriodColumns(checks = [], constraints = []) {
@@ -138,7 +162,7 @@ export function constraintPeriodColumns(checks = [], constraints = []) {
     const number = constraints.findIndex(c => c.id === check.id) + 1
     const period = check.year_from === check.year_to ? check.year_from : `${check.year_from}–${check.year_to}`
     return { key: JSON.stringify([check.id, check.year_from, check.year_to]),
-      label: `C${number}: ${check.metric === 'capex' ? 'Cash Capex' : 'Production'} · ${period} (${check.unit})`,
+      label: `C${number}: ${METRIC_LABELS[check.metric]} · ${period} (${check.unit})`,
       numeric: true, width: 160, constraint: true }
   })
 }
@@ -157,11 +181,14 @@ export function optimiserRequest(draft) {
   if (timingBlocked(draft)) throw new Error('Timing limits must be whole years from 0 to 14, with at least one direction enabled.')
   if (runGateBlocked(draft)) throw new Error('Mix targets must total 100%, with a tolerance between 0 and 100 percentage points.')
   const constraints = draft.constraints.map(c => {
-    const target = Number(c.target), flexibility = Number(c.flexibility_pct)
-    if (String(c.target).trim() === '' || !Number.isFinite(target) || target < 0 || target > 1e12 ||
+    if (draft.use_priorities && (!Number.isInteger(Number(c.priority ?? 2)) || Number(c.priority ?? 2) < 1 || Number(c.priority ?? 2) > 3 || !Number.isFinite(Number(c.weight ?? 1)) || Number(c.weight ?? 1) <= 0 || Number(c.weight ?? 1) > 100)) throw new Error('Constraint priorities must be 1–3 and weights above 0 and at most 100.')
+    const relative = c.target_basis === 'relative'
+    const target = relative ? 0 : Number(c.target), flexibility = Number(c.flexibility_pct)
+    if ((!relative && String(c.target).trim() === '') || !Number.isFinite(target) || (target < 0 && c.metric !== 'post_tax_fcf') || Math.abs(target) > 1e12 ||
         !validPeriod(c.year_from, c.year_to) || !Number.isInteger(flexibility) || flexibility < 0 || flexibility > 15 ||
-        (target === 0 && flexibility > 0)) throw new Error('Check constraint targets, periods and flexibility. Zero targets must stay strict.')
-    return { ...c, target, flexibility_pct: flexibility, year_from: Number(c.year_from), year_to: Number(c.year_to) }
+        (!relative && target === 0 && flexibility > 0)) throw new Error('Check constraint targets, periods and flexibility. Zero targets must stay strict.')
+    if (relative && (String(c.relative_pct).trim() === '' || !Number.isFinite(Number(c.relative_pct)) || c.relative_pct < -100 || c.relative_pct > 10000 || (Number(c.relative_pct) === -100 && flexibility))) throw new Error('Reference adjustment must be from −100% to +10,000%; a zero target must stay strict.')
+    return { ...c, target, relative_pct: Number(c.relative_pct ?? 0), priority: draft.use_priorities ? Number(c.priority ?? 2) : 2, weight: draft.use_priorities ? Number(c.weight ?? 1) : 1, flexibility_pct: flexibility, year_from: Number(c.year_from), year_to: Number(c.year_to) }
   })
   const mixConstraints = []
   for (const dimension of ['group_entity', 'region']) {
@@ -173,8 +200,10 @@ export function optimiserRequest(draft) {
   return {
     // The existing API's mix contract accepts optional controls, including none.
     objective: draft.objective, mode: 'mix',
-    max_delay_years: draft.timing?.enabled ? Number(draft.timing.max_delay_years) : 0,
-    max_acceleration_years: draft.timing?.enabled ? Number(draft.timing.max_acceleration_years) : 0,
+    max_delay_years: timingLimit(draft, 'delay'),
+    max_acceleration_years: timingLimit(draft, 'acceleration'),
+    use_priorities: draft.use_priorities ?? false,
+    plan_type_rules: Object.entries(draft.plan_type_rules ?? {}).map(([plan_type, rule]) => ({ plan_type, rule })),
     year_from: Number(draft.year_from), year_to: Number(draft.year_to), constraints,
     mandatory_case_ids: [], excluded_case_ids: [],
     mix_constraints: mixConstraints,
@@ -206,15 +235,16 @@ export function recommendationDefinition(result, request) {
   const rationale = [
     'Portfolio optimiser.',
     `${objective.label}: ${objective.description} Period ${request.year_from}–${request.year_to}.`,
-    `Verified through the scenario engine. Flexibility step: ${result.relaxation_pct}%.`,
+    `Verified through the scenario engine. ${request.use_priorities ? 'Ordered constraint priorities' : `Flexibility step: ${result.relaxation_pct}%`}.`,
     `Timing limits: delay ${request.max_delay_years ?? 0} years; accelerate ${request.max_acceleration_years ?? 0} years. Pure year shifts; no penalty or additional acquisition/Capex costs.`,
-    ...shifted.map(c => `Case ${c.id}: ${timingLabel(c)}.`),
-    ...(request.constraints ?? []).map(c => `${c.metric} ${c.operator} ${c.target} ${constraintUnit(c)}, ${c.year_from}–${c.year_to}, ${c.basis}; flexibility ${c.flexibility_pct}%.`),
-    ...(result.constraint_checks ?? []).map(c => `Limit ${c.id} (${c.year_from}–${c.year_to}): adjusted ${c.adjusted_target}, actual ${c.actual} ${c.unit}.`),
+    ...shifted.map(c => `Case ${c.id}: ${timingLabel(c)}; parameters ${JSON.stringify(c.params ?? [Math.abs(c.year_shift), 0, 0, 0, 0])}.`),
+    ...(request.constraints ?? []).map(c => `${c.metric} ${c.operator} ${c.target_basis === 'relative' ? `${c.relative_pct}% relative to reference` : c.target} ${constraintUnit(c)}, ${c.year_from}–${c.year_to}, ${c.basis}; flexibility ${c.flexibility_pct}%; priority ${c.priority ?? 2}, weight ${c.weight ?? 1}.`),
+    ...(result.constraint_checks ?? []).map(c => `Limit ${c.id} (${c.year_from}–${c.year_to}): reference ${c.reference_value ?? 'not recorded'}, requested ${c.target}, adjusted ${c.adjusted_target}, actual ${c.actual} ${c.unit}.`),
     ...(request.mix_constraints ?? []).map(c => `${c.dimension}: ${c.value}, production target ${c.target_share_pct}% ±${c.tolerance_pct_points} percentage points.`),
-    'Control precedence: case overrides country, country overrides region. Unspecified controls inherit.',
+    'Control precedence: case overrides geography and plan type; country overrides region. Conflicting group rules require a case override. Reference locks stay unchanged.',
     ...(request.region_rules ?? []).map(r => `Region ${r.region}: ${CONTROL_LABELS[r.rule]} by default.`),
     ...(request.country_rules ?? []).map(r => `Country ${r.country} (${r.region}): ${CONTROL_LABELS[r.rule]}.`),
+    ...(request.plan_type_rules ?? []).map(r => `Plan type ${r.plan_type}: ${CONTROL_LABELS[r.rule]}.`),
     ...(request.case_rules ?? []).map(r => `Case ${r.case_id}: ${CONTROL_LABELS[r.rule]}.`),
     `Required cases: ${(request.mandatory_case_ids ?? []).join(', ') || 'none'}. Excluded cases: ${(request.excluded_case_ids ?? []).join(', ') || 'none'}.`,
   ].join('\n')
@@ -224,7 +254,7 @@ export function recommendationDefinition(result, request) {
     rationale, shortlisted_case_ids: [...excluded, ...shifted.map(c => c.id)],
     case_configurations: Object.fromEntries([
       ...excluded.map(id => [id, { ...defaultCase(), include: false }]),
-      ...shifted.map(c => [c.id, { include: true, operation: c.operation, params: [Math.abs(c.year_shift), 0, 0, 0, 0] }]),
+      ...shifted.map(c => [c.id, { include: true, operation: c.operation, params: c.params ?? [Math.abs(c.year_shift), 0, 0, 0, 0] }]),
     ]),
   }
 }
