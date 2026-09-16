@@ -78,16 +78,38 @@ def test_unmatched_cash_tax_preserves_excel_fallback(inputs):
     assert warnings[0]["ID"] == 1 and warnings[0]["Year"] == 2027
 
 
-@pytest.mark.parametrize("problem", ["missing_rate", "missing_mapping", "duplicate_profile", "duplicate_case", "missing_metric", "infinite"])
+@pytest.mark.parametrize("problem", ["missing_rate", "missing_mapping", "duplicate_profile", "duplicate_case", "infinite"])
 def test_financial_validation(inputs, problem):
     profiles, cases, rates = inputs
     if problem == "missing_rate": rates = rates.iloc[:1]
     if problem == "missing_mapping": cases = cases.iloc[:1]
     if problem == "duplicate_profile": profiles = pd.concat([profiles, profiles.iloc[:1]])
     if problem == "duplicate_case": cases = pd.concat([cases, cases.iloc[:1]])
-    if problem == "missing_metric": profiles = profiles.query('Metric != "Underlying RCOP"')
     if problem == "infinite": profiles.loc[0, "Value"] = float("inf")
     with pytest.raises(ValueError): calculate_post_tax(profiles, cases, rates)
+
+
+@pytest.mark.parametrize('metric', ['Underlying RCOP', 'Pre Tax Cash Flow', 'Total Production (mboed)'])
+def test_sparse_financial_inputs_derive_only_from_present_source_rows(inputs, metric):
+    profiles, cases, rates = inputs
+    sparse = profiles.query('ID == 1 and Year == 2026').iloc[:1].copy()
+    sparse['Metric'] = metric
+    sparse['Value'] = 100.0
+    original = sparse.copy(deep=True)
+    out, diagnostics = calculate_post_tax(sparse, cases, rates)
+    assert set(out.Year) == {2026} and set(out.ID) == {1}
+    if metric == 'Underlying RCOP':
+        assert value(out, 'Tax Charge') == -30
+        assert value(out, 'Post-Tax RCOP') == 70
+        assert 'Post-Tax Cash Flow' not in set(out.Metric)
+    elif metric == 'Pre Tax Cash Flow':
+        assert value(out, 'Post-Tax Cash Flow') == 100
+        assert diagnostics[0]['code'] == 'UNMATCHED_CASH_TAX'
+        assert 'Post-Tax RCOP' not in set(out.Metric)
+    else:
+        assert list(out.Metric) == [metric]
+        assert not diagnostics
+    pd.testing.assert_frame_equal(original, sparse)
 
 
 @pytest.mark.parametrize("column,bad", [("ETR", 1.5), ("CTR", -0.1), ("CTR", float("inf")),

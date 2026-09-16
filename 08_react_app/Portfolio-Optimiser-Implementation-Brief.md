@@ -2,7 +2,7 @@
 
 ## Current scope — 16 September 2026
 
-The optimiser has two modes: **Standard** (objective, constraints and targets) and **Advanced** (objective, constraints, production mix, then hierarchical Region → Country → Case controls). Both offer Post-tax NPV, undiscounted post-tax Free Cash Flow, before-tax Underlying RCOP and cumulative Production. More-specific controls override their parents, and explicit “Optimiser chooses” clears an inherited restriction. Standard submits no portfolio controls. The [remediation plan's current implementation section](Portfolio-Optimiser-Remediation-Plan.md#current-implementation--simplified-scope-16-september-2026) records the governing decisions and checks. The original agreement and subsequent examples below are historical design material, superseded by this current scope.
+The optimiser uses one workflow: **Objective → Constraints → Run**, with optional **Portfolio controls** in a side pane. Mix targets start off; all cases are available for the optimiser to choose. The pane contains oil/gas and regional production-share targets plus hierarchical Region → Country → Case selections. Changes remain active when the pane closes; the main page summarises enabled mix targets and effective required/excluded case counts. Clear portfolio controls resets only those optional controls, retaining the objective, period and constraints. All four objectives remain available. The [remediation plan's current implementation section](Portfolio-Optimiser-Remediation-Plan.md#current-implementation--simplified-scope-16-september-2026) records the governing decisions and checks. The original agreement and subsequent examples below are historical design material, superseded by this current scope.
 
 ## Agreed first implementation
 

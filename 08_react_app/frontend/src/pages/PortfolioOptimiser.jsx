@@ -1,18 +1,18 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, SlidersHorizontal } from 'lucide-react'
 import { SidePanelContext, ScenarioResultContext } from '../App'
 import { WorkingScenarioContext } from '../hooks/WorkingScenarioContext'
 import { isDirty } from '../hooks/scenarioDefinition'
 import { usePortfolio } from '../hooks/usePortfolio'
 import { solveOptimisation, getReferenceMeasure } from '../api/client'
-import OptimiserControls from '../components/OptimiserControls'
+import OptimiserPortfolioControls from '../components/OptimiserPortfolioControls'
 import RecommendationConfirmation from '../components/RecommendationConfirmation'
 import {
   YEARS, OBJECTIVES, DEFAULT_OPTIMISER, newConstraint, constraintUnit,
   optimiserRequest, recommendationDefinition, sortRecommendedCases,
-  referenceMix, changeMixShare, excludeRegionShares, excludedRegionRules, changeControlRules, effectiveCaseRule,
-  mixTotal, runGateBlocked,
+  referenceMix, excludeRegionShares, excludedRegionRules, changeControlRules, effectiveCaseRule,
+  clearPortfolioControls, hasMixTargets, runGateBlocked,
 } from './optimiserHelpers'
 import '../components/ScenarioResults.css'
 import '../components/PortfolioOptimiser.css'
@@ -26,11 +26,6 @@ const STATUSES = {
   unbounded:  'Unexpected unbounded model',
 }
 
-const MODES = [
-  { key: 'full', label: 'Standard', desc: 'Choose an objective and set constraints and targets to optimise your portfolio.' },
-  { key: 'mix', label: 'Advanced', desc: 'All Standard options, plus portfolio mix targets and controls by region, country and case.' },
-]
-
 function Year({ label, value, onChange }) {
   return (
     <label>{label}
@@ -38,40 +33,6 @@ function Year({ label, value, onChange }) {
         {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
       </select>
     </label>
-  )
-}
-
-function MixSection({ title, section, reference, onChange, onReset, excluded = [] }) {
-  const total = mixTotal(section.sliders)
-  return (
-    <div className="optimiser-mix-section">
-      <div className="optimiser-mix-heading">
-        <label className="optimiser-check-label">
-          <input type="checkbox" checked={section.enabled}
-            onChange={e => onChange({ ...section, enabled: e.target.checked })} />
-          {title}
-        </label>
-        {section.enabled && <button type="button" className="saved-scenarios__trigger" onClick={onReset}>Reset to reference mix</button>}
-      </div>
-      {section.enabled && <>
-        <label className="optimiser-tolerance">Allowed difference (± percentage points)
-          <input type="number" min="0" max="100" step="0.1" required value={section.tolerance}
-            onChange={e => onChange({ ...section, tolerance: e.target.value })} />
-        </label>
-        {Object.entries(section.sliders).map(([value, pct]) => (
-          <div key={value} className="optimiser-mix-row">
-            <span className="optimiser-mix-label">{value}
-              <small className="results-case-id">Reference: {fmt(reference?.[value])}%{excluded.includes(value) ? ' · Excluded' : ''}</small>
-            </span>
-            <input type="range" min="0" max="100" step="1" value={pct}
-              aria-label={`${title}: ${value} target share`} disabled={excluded.includes(value)}
-              onChange={e => onChange({ ...section, sliders: changeMixShare(section.sliders, value, e.target.value, excluded) })} />
-            <span className="optimiser-mix-value">{fmt(pct)}%</span>
-          </div>
-        ))}
-        <p className="optimiser-mix-total">Total: {fmt(total)}%</p>
-      </>}
-    </div>
   )
 }
 
@@ -86,6 +47,7 @@ export default function PortfolioOptimiser() {
   const [reference, setReference] = useState(null)
   const [referenceError, setReferenceError] = useState(null)
   const [referenceRetry, setReferenceRetry] = useState(0)
+  const [controlsOpen, setControlsOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState(null)
@@ -130,7 +92,7 @@ export default function PortfolioOptimiser() {
   }
 
   async function run() {
-    if (runLock.current || (draft.mode === 'mix' && !referenceReady)) return
+    if (runLock.current || (hasMixTargets(draft) && !referenceReady)) return
     let request
     try { request = optimiserRequest(draft) }
     catch (err) { setError(err.message); return }
@@ -164,11 +126,12 @@ export default function PortfolioOptimiser() {
     { key: 'objective_contribution', label: `${result?.objective_label ?? 'Objective'} (${result?.objective_unit ?? '$m'})` }, { key: 'capex', label: 'Cash Capex ($m)' },
     { key: 'production', label: 'Production (mmboe)' },
   ]
-  const showMix = draft.mode === 'mix'
-  const blocked = runGateBlocked(draft) || (showMix && !referenceReady) || draft.year_from > draft.year_to
-  const regionExclusions = excludedRegionRules(draft, cases)
-  const excludedRegions = Object.keys(regionExclusions)
-  const controlStates = showMix ? cases.map(c => effectiveCaseRule(draft, c)) : []
+  const blocked = runGateBlocked(draft) || (hasMixTargets(draft) && !referenceReady) || draft.year_from > draft.year_to
+  const controlStates = cases.map(c => effectiveCaseRule(draft, c))
+  const requiredCount = controlStates.filter(s => s === 'mandatory').length
+  const excludedCount = controlStates.filter(s => s === 'excluded').length
+  const mixLabels = [draft.group_entity_mix.enabled && 'Oil / Gas', draft.region_mix.enabled && 'Regional'].filter(Boolean)
+  const controlsSummary = `${mixLabels.length ? `${mixLabels.join(' and ')} mix targets applied` : 'No mix targets'} · ${requiredCount} ${requiredCount === 1 ? 'case' : 'cases'} required · ${excludedCount} excluded`
 
   return (
     <div className="portfolio-optimiser">
@@ -179,20 +142,18 @@ export default function PortfolioOptimiser() {
           <h2>Portfolio Optimiser</h2>
           <p>Choose what to maximise and find a portfolio that meets your limits.</p>
           <p className="text-small text-muted">All {cases.length} reference cases are candidates. Decisions are include or exclude at reference profiles.</p>
+          <p className="text-small text-muted">Metrics and years with no profile rows contribute zero.</p>
         </div>
       </div>
 
-      {/* Mode selector */}
-      <div className="optimiser-mode-selector">
-        {MODES.map(m => (
-          <button key={m.key} type="button" className="optimiser-mode-card"
-            aria-pressed={draft.mode === m.key} disabled={running} onClick={() => change({ mode: m.key })}>
-            <strong>{m.label}</strong>
-            <small>{m.desc}</small>
-          </button>
-        ))}
+      <div className="optimiser-controls-summary">
+        <div><strong>Portfolio controls <span className="text-muted">· Optional</span></strong>
+          <p className="text-small text-muted" aria-live="polite">{controlsSummary}</p></div>
+        <button type="button" className="saved-scenarios__trigger" aria-haspopup="dialog"
+          disabled={running} onClick={() => setControlsOpen(true)}>
+          <SlidersHorizontal size={16} /> Portfolio controls
+        </button>
       </div>
-      <p className="text-small text-muted">Switching modes keeps your settings. Mix targets and region, country and case controls apply only in Advanced.</p>
 
       <form onSubmit={e => { e.preventDefault(); run() }}>
         <fieldset disabled={running} className="optimiser-fields">
@@ -213,7 +174,7 @@ export default function PortfolioOptimiser() {
             </div>
           </section>
 
-          {/* Constraints follow the objective in both modes. */}
+          {/* Step 2: Constraints */}
           <section className="results-panel">
             <header className="results-panel__header">
               <h3><span className="optimiser-step">2</span> Constraints</h3>
@@ -277,43 +238,14 @@ export default function PortfolioOptimiser() {
             )}
           </section>
 
-          {showMix && (
-            <section className="results-panel">
-              <h3><span className="optimiser-step">3</span> Portfolio mix</h3>
-              <p className="text-small text-muted">
-                Targets are shares of selected production for {draft.year_from}–{draft.year_to}.
-                Adjusting one share redistributes the others to keep 100%. Whole cases are selected,
-                so the default allowance is ±5 percentage points. Changing the period resets targets to its reference mix.
-              </p>
-              {referenceError ? <div role="alert"><p>{referenceError}</p><button type="button" onClick={() => setReferenceRetry(n => n + 1)}>Retry reference mix</button></div>
-                : !referenceReady ? <p role="status">Loading reference production mix…</p> : <>
-                <MixSection title="Oil / Gas mix" section={draft.group_entity_mix}
-                  reference={reference.shares.group_entity}
-                  onChange={section => change({ group_entity_mix: section })}
-                  onReset={() => change({ group_entity_mix: { ...draft.group_entity_mix, sliders: reference.shares.group_entity } })} />
-                <MixSection title="Regional mix" section={draft.region_mix} reference={reference.shares.region}
-                  excluded={excludedRegions} onChange={section => change({ region_mix: section })}
-                  onReset={() => change({ region_mix: { ...draft.region_mix, sliders: excludeRegionShares(reference.shares.region, regionExclusions) } })} />
-                <p className="text-small text-muted">Excluding every case in a region redistributes its regional target to the others. Oil / Gas targets stay as set and may need adjusting.</p>
-              </>}
-            </section>
-          )}
-
-          {showMix && <section className="results-panel">
-            <h3><span className="optimiser-step">4</span> Controls</h3>
-            <p className="text-small text-muted">Choose by region, then refine by country and case. A country overrides its region; a case overrides both.
-              Inherit follows the parent rule. Optimiser chooses removes that restriction. Existing more-specific choices remain in effect when a parent changes.</p>
-            <OptimiserControls cases={cases} draft={draft} onChange={changeControls} />
-          </section>}
-
           {/* Run */}
           <section className="results-panel">
             <div className="results-panel__header">
               <div>
-                <h3><span className="optimiser-step">{showMix ? 5 : 3}</span> Run optimisation</h3>
+                <h3><span className="optimiser-step">3</span> Run optimisation</h3>
                 <p className="text-small text-muted">
                   {draft.constraints.length} constraints
-                  {showMix && ` · ${controlStates.filter(s => s === 'mandatory').length} cases required · ${controlStates.filter(s => s === 'excluded').length} cases excluded`}
+                  {` · ${controlsSummary}`}
                 </p>
               </div>
               <button type="submit" className="saved-scenarios__trigger optimiser-primary"
@@ -323,7 +255,7 @@ export default function PortfolioOptimiser() {
             </div>
             {blocked && !running && (
               <p role="alert" className="text-small" style={{ color: '#c0392b' }}>
-                Check the year range and mix settings. Advanced also needs loaded reference data and targets totalling 100%.
+                Check the year range and portfolio controls. Enabled mix targets need loaded reference data and must total 100%.
               </p>
             )}
             {running && <p role="status">Finding a portfolio that meets your limits…</p>}
@@ -479,6 +411,12 @@ export default function PortfolioOptimiser() {
           </details>
         </section>
       )}
+
+      {controlsOpen && <OptimiserPortfolioControls cases={cases} draft={draft}
+        reference={reference} referenceReady={referenceReady} referenceError={referenceError}
+        onRetry={() => setReferenceRetry(n => n + 1)} onChange={change} onChangeControls={changeControls}
+        onClear={() => change(clearPortfolioControls(referenceReady ? reference.shares : undefined))}
+        onClose={() => setControlsOpen(false)} />}
 
       {reviewOpen && result && (
         <RecommendationConfirmation

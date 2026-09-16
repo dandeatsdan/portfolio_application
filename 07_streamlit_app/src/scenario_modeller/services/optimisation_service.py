@@ -135,9 +135,8 @@
 # a $1,000m maximum in every year 2026-2028 is three annual limits;
 # it is not a single $1,000m limit shared across all three years.
 #
-# Missing years within an available case/metric contribute zero,
-# matching the existing reports. A completely missing required metric
-# for a case, duplicate profile keys or non-finite values are errors.
+# Absent case/metric/year combinations contribute zero, including a metric
+# with no rows for a case. Duplicate keys and non-finite values remain errors.
 #
 # Processing flow and the functions to read
 # ------------------------------------------
@@ -393,15 +392,14 @@ def prepare_coefficients(profiles, cases, spec):
     data = profiles.loc[profiles.ID.isin(ids)].copy()
     if data.duplicated(['ID', 'Metric', 'Year']).any() or not np.isfinite(data.Value).all():
         raise ValueError('Duplicate or non-finite analytical profiles')
-    # Missing annual rows within a present metric are zero, as in existing reports.
+    # Sparse profiles are valid: absent metrics and years contribute zero.
+    # A case with no profile rows at all cannot be replayed by the scenario engine.
+    missing_cases = set(ids) - set(data.ID)
+    if missing_cases:
+        raise ValueError(f'No analytical profile rows for cases {sorted(missing_cases)}')
     if spec.objective not in OBJECTIVES:
         raise ValueError('Unsupported optimisation objective')
     objective_metric = OBJECTIVES[spec.objective][2]
-    required_metrics = {*METRICS.values(), 'Post-Tax Cash Flow', objective_metric}
-    for metric in required_metrics:
-        missing = set(ids) - set(data.loc[data.Metric == metric, 'ID'])
-        if missing:
-            raise ValueError(f'Missing {metric} profiles for cases {sorted(missing)}')
     npvs = npv_by_case(data, 8, spec.year_from, spec.year_to).set_index('ID').NPV
     npv_values = {i: float(npvs.get(i, 0)) for i in ids}
     if spec.objective == 'post_tax_npv':

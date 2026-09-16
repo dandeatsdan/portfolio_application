@@ -8,10 +8,20 @@ export const OBJECTIVES = [
   { key: 'production', label: 'Production', description: 'Maximise cumulative production over the selected years, in mmboe.', unit: 'mmboe' },
 ]
 export const DEFAULT_OPTIMISER = {
-  year_from: 2026, year_to: 2040, objective: 'post_tax_npv', mode: 'full',
+  year_from: 2026, year_to: 2040, objective: 'post_tax_npv',
   constraints: [], region_rules: {}, country_rules: {}, case_rules: {},
-  group_entity_mix: { enabled: true, tolerance: 5, sliders: {} },
-  region_mix: { enabled: true, tolerance: 5, sliders: {} },
+  group_entity_mix: { enabled: false, tolerance: 5, sliders: {} },
+  region_mix: { enabled: false, tolerance: 5, sliders: {} },
+}
+
+export const hasMixTargets = draft => draft.group_entity_mix.enabled || draft.region_mix.enabled
+
+export function clearPortfolioControls(shares) {
+  return {
+    region_rules: {}, country_rules: {}, case_rules: {},
+    group_entity_mix: { ...DEFAULT_OPTIMISER.group_entity_mix, sliders: shares?.group_entity ?? {} },
+    region_mix: { ...DEFAULT_OPTIMISER.region_mix, sliders: shares?.region ?? {} },
+  }
 }
 
 export function newConstraint(id) {
@@ -72,12 +82,14 @@ export function referenceMix(cases, rows) {
   for (const dimension of ['group_entity', 'region']) {
     const totals = {}
     for (const c of cases) {
-      const value = values.get(c.id)
+      // The reference endpoint returns null when this case has no metric rows
+      // in the period. It contributes zero, just like the solver's sums.
+      const value = values.get(c.id) === null ? 0 : values.get(c.id)
       if (!Number.isFinite(value) || value < 0) throw new Error('Reference production is missing or invalid for a case.')
       const key = dimensionValue(c[dimension])
       totals[key] = (totals[key] || 0) + value
     }
-    if (mixTotal(totals) <= 0) throw new Error('Advanced needs positive production in the selected period.')
+    if (mixTotal(totals) <= 0) throw new Error('Mix targets need positive production in the selected period.')
     result[dimension] = allocate(totals)
   }
   return result
@@ -98,7 +110,6 @@ export function changeMixShare(sliders, key, value, excluded = []) {
 }
 
 export function runGateBlocked(draft) {
-  if (draft.mode !== 'mix') return false
   return [draft.group_entity_mix, draft.region_mix].some(s => s.enabled && (
     !Object.keys(s.sliders).length || Math.abs(mixTotal(s.sliders) - 100) > 1e-6 ||
     Object.values(s.sliders).some(v => !Number.isFinite(Number(v)) || v < 0 || v > 100) ||
@@ -122,26 +133,24 @@ export function optimiserRequest(draft) {
     return { ...c, target, flexibility_pct: flexibility, year_from: Number(c.year_from), year_to: Number(c.year_to) }
   })
   const mixConstraints = []
-  if (draft.mode === 'mix') {
-    for (const dimension of ['group_entity', 'region']) {
-      const section = draft[`${dimension}_mix`]
-      if (section.enabled) for (const [value, target] of Object.entries(section.sliders)) {
-        mixConstraints.push({ dimension, value, target_share_pct: Number(target), tolerance_pct_points: Number(section.tolerance) })
-      }
+  for (const dimension of ['group_entity', 'region']) {
+    const section = draft[`${dimension}_mix`]
+    if (section.enabled) for (const [value, target] of Object.entries(section.sliders)) {
+      mixConstraints.push({ dimension, value, target_share_pct: Number(target), tolerance_pct_points: Number(section.tolerance) })
     }
   }
   return {
-    objective: draft.objective, mode: draft.mode,
+    // The existing API's mix contract accepts optional controls, including none.
+    objective: draft.objective, mode: 'mix',
     year_from: Number(draft.year_from), year_to: Number(draft.year_to), constraints,
     mandatory_case_ids: [], excluded_case_ids: [],
     mix_constraints: mixConstraints,
-    region_rules: draft.mode === 'mix'
-      ? Object.entries(draft.region_rules).filter(([, rule]) => rule !== 'optional').map(([region, rule]) => ({ region, rule })) : [],
-    country_rules: draft.mode === 'mix' ? Object.entries(draft.country_rules ?? {}).map(([key, rule]) => {
+    region_rules: Object.entries(draft.region_rules).filter(([, rule]) => rule !== 'optional').map(([region, rule]) => ({ region, rule })),
+    country_rules: Object.entries(draft.country_rules ?? {}).map(([key, rule]) => {
       const [region, country] = JSON.parse(key)
       return { region, country, rule }
-    }) : [],
-    case_rules: draft.mode === 'mix' ? Object.entries(draft.case_rules ?? {}).map(([case_id, rule]) => ({ case_id: Number(case_id), rule })) : [],
+    }),
+    case_rules: Object.entries(draft.case_rules ?? {}).map(([case_id, rule]) => ({ case_id: Number(case_id), rule })),
   }
 }
 
@@ -154,7 +163,7 @@ export function recommendationDefinition(result, request) {
   const objective = OBJECTIVES.find(o => o.key === request.objective)
   if (!objective) throw new Error('Recommendation objective is unsupported.')
   const rationale = [
-    `Portfolio optimiser: ${request.mode === 'mix' ? 'Advanced' : 'Standard'}.`,
+    'Portfolio optimiser.',
     `${objective.label}: ${objective.description} Period ${request.year_from}–${request.year_to}.`,
     `Verified through the scenario engine. Flexibility step: ${result.relaxation_pct}%.`,
     ...(request.constraints ?? []).map(c => `${c.metric} ${c.operator} ${c.target} ${constraintUnit(c)}, ${c.year_from}–${c.year_to}, ${c.basis}; flexibility ${c.flexibility_pct}%.`),

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { DEFAULT_OPTIMISER, newConstraint, optimiserRequest, recommendationDefinition, constraintUnit, referenceMix, changeMixShare, excludeRegionShares, mixTotal, runGateBlocked, countryRuleKey, effectiveCaseRule, excludedRegionRules, changeControlRules } from './optimiserHelpers.js'
+import { DEFAULT_OPTIMISER, newConstraint, optimiserRequest, recommendationDefinition, constraintUnit, referenceMix, changeMixShare, excludeRegionShares, mixTotal, runGateBlocked, countryRuleKey, effectiveCaseRule, excludedRegionRules, changeControlRules, clearPortfolioControls, hasMixTargets } from './optimiserHelpers.js'
 import { initialScenario, scenarioReducer, serializeScenario, isDirty } from '../hooks/scenarioDefinition.js'
 import { buildScenarioInstructions } from '../hooks/scenarioInstructions.js'
 
@@ -52,6 +52,17 @@ test('reference mix includes unknown categories and follows period data without 
   assert.throws(() => referenceMix(cases, [{ id: 1, value: 1 }]), /missing or invalid/)
 })
 
+test('reference mix treats absent metric-period rows as zero without hiding invalid values', () => {
+  const cases = [{ id: 1, group_entity: 'Oil', region: 'North' }, { id: 2, group_entity: 'Gas', region: 'South' }]
+  const shares = referenceMix(cases, [{ id: 1, value: null }, { id: 2, value: 20 }])
+  assert.deepEqual(shares.group_entity, { Oil: 0, Gas: 100 })
+  assert.deepEqual(shares.region, { North: 0, South: 100 })
+  assert.throws(() => referenceMix(cases, [{ id: 1, value: null }, { id: 2, value: null }]), /positive production/)
+  for (const value of [NaN, Infinity, -1, '20']) {
+    assert.throws(() => referenceMix(cases, [{ id: 1, value }, { id: 2, value: 20 }]), /missing or invalid/)
+  }
+})
+
 test('slider edits redistribute the remaining shares, respecting whole-region exclusions', () => {
   const shares = changeMixShare({ A: 50, B: 30, C: 20 }, 'A', 60)
   assert.deepEqual(shares, { A: 60, B: 24, C: 16 })
@@ -64,8 +75,8 @@ test('slider edits redistribute the remaining shares, respecting whole-region ex
   assert.deepEqual(excludeRegionShares({ A: 50, B: 50 }, { A: 'excluded', B: 'excluded' }), { A: 0, B: 0 })
 })
 
-test('only Advanced sends mix and region rules; switching mode keeps base constraints', () => {
-  const draft = { ...DEFAULT_OPTIMISER, mode: 'mix', constraints: [{ ...newConstraint('a'), target: 100 }],
+test('enabled mix targets and case rules are submitted independently', () => {
+  const draft = { ...DEFAULT_OPTIMISER, constraints: [{ ...newConstraint('a'), target: 100 }],
     group_entity_mix: { enabled: true, tolerance: 5, sliders: { Oil: 60, Gas: 40 } },
     region_mix: { enabled: true, tolerance: 2, sliders: { North: 100, South: 0 } },
     region_rules: { North: 'mandatory', South: 'excluded' } }
@@ -73,10 +84,10 @@ test('only Advanced sends mix and region rules; switching mode keeps base constr
   assert.equal(request.objective, 'post_tax_npv')
   assert.deepEqual(request.mix_constraints[0], { dimension: 'group_entity', value: 'Oil', target_share_pct: 60, tolerance_pct_points: 5 })
   assert.deepEqual(request.region_rules, [{ region: 'North', rule: 'mandatory' }, { region: 'South', rule: 'excluded' }])
-  const full = optimiserRequest({ ...draft, mode: 'full' })
-  assert.deepEqual(full.mix_constraints, [])
-  assert.deepEqual(full.region_rules, [])
-  assert.deepEqual(full.constraints, request.constraints)
+  const withoutMix = optimiserRequest({ ...draft, group_entity_mix: { enabled: false }, region_mix: { enabled: false } })
+  assert.deepEqual(withoutMix.mix_constraints, [])
+  assert.deepEqual(withoutMix.region_rules, request.region_rules)
+  assert.deepEqual(withoutMix.constraints, request.constraints)
   assert.ok(runGateBlocked({ ...draft, region_mix: { ...draft.region_mix, sliders: { North: 0, South: 0 } } }))
   assert.ok(runGateBlocked({ ...draft, region_mix: { ...draft.region_mix, tolerance: '' } }))
 })
@@ -92,15 +103,15 @@ test('recommendation preserves mix policy, region rules and actual constraint ou
   assert.deepEqual(definition.case_configurations[2], { include: false, operation: 'No Change', params: [0, 0, 0, 0, 0] })
 })
 
-test('both modes preserve the chosen objective and describe it accurately in the scenario', () => {
-  for (const mode of ['full', 'mix']) {
+test('all objectives remain available with or without optional controls', () => {
+  for (const region_rules of [{}, { North: 'mandatory' }]) {
     for (const [objective, label, wording] of [
       ['post_tax_npv', 'Post-tax NPV', 'discounted at 8%'],
       ['post_tax_fcf', 'Free Cash Flow', 'undiscounted'],
       ['underlying_rcop', 'Underlying RCOP', 'before tax'],
       ['production', 'Production', 'mmboe'],
     ]) {
-      const draft = { ...DEFAULT_OPTIMISER, objective, mode,
+      const draft = { ...DEFAULT_OPTIMISER, objective, region_rules,
         group_entity_mix: { enabled: false }, region_mix: { enabled: false } }
       const request = optimiserRequest(draft)
       assert.equal(request.objective, objective)
@@ -130,18 +141,31 @@ test('hierarchical controls inherit and override in region, country, case order'
   assert.notEqual(countryRuleKey('North', 'A'), countryRuleKey('South', 'A'))
 })
 
-test('Standard never submits Advanced controls, even when the draft retains them', () => {
-  const draft = { ...DEFAULT_OPTIMISER, region_rules: { North: 'mandatory' },
+test('default optimiser can run without reference mix; explicit clearing resets only optional controls', () => {
+  assert.equal(hasMixTargets(DEFAULT_OPTIMISER), false)
+  assert.equal(runGateBlocked(DEFAULT_OPTIMISER), false)
+  const initial = optimiserRequest(DEFAULT_OPTIMISER)
+  for (const key of ['mix_constraints', 'region_rules', 'country_rules', 'case_rules']) assert.deepEqual(initial[key], [])
+  const draft = { ...DEFAULT_OPTIMISER, objective: 'production', year_from: 2028,
+    constraints: [{ ...newConstraint('budget'), target: 100 }],
+    region_rules: { North: 'mandatory' },
     country_rules: { [countryRuleKey('North', 'A')]: 'excluded' }, case_rules: { 1: 'optional' },
-    mandatory_case_ids: [99], excluded_case_ids: [88],
-    group_entity_mix: { enabled: false }, region_mix: { enabled: false } }
-  const standard = optimiserRequest(draft)
-  for (const key of ['mandatory_case_ids', 'excluded_case_ids', 'region_rules', 'country_rules', 'case_rules', 'mix_constraints']) {
-    assert.deepEqual(standard[key], [])
-  }
-  const advanced = optimiserRequest({ ...draft, mode: 'mix' })
-  assert.deepEqual(advanced.country_rules, [{ region: 'North', country: 'A', rule: 'excluded' }])
-  assert.deepEqual(advanced.case_rules, [{ case_id: 1, rule: 'optional' }])
+    region_mix: { enabled: true, tolerance: 2, sliders: { North: 70, South: 30 } } }
+  const request = optimiserRequest(draft)
+  assert.deepEqual(request.country_rules, [{ region: 'North', country: 'A', rule: 'excluded' }])
+  assert.deepEqual(request.case_rules, [{ case_id: 1, rule: 'optional' }])
+  const reference = { group_entity: { Oil: 60, Gas: 40 }, region: { North: 60, South: 40 } }
+  const cleared = { ...draft, ...clearPortfolioControls(reference) }
+  const after = optimiserRequest(cleared)
+  for (const key of ['mix_constraints', 'region_rules', 'country_rules', 'case_rules']) assert.deepEqual(after[key], [])
+  assert.deepEqual(after.constraints, request.constraints)
+  assert.equal(after.objective, 'production')
+  assert.equal(after.year_from, 2028)
+  assert.equal(cleared.region_mix.tolerance, 5)
+  assert.deepEqual(cleared.region_mix.sliders, reference.region)
+  assert.equal(draft.region_mix.enabled, true)
+  assert.equal(draft.case_rules[1], 'optional')
+  assert.deepEqual(clearPortfolioControls().region_mix.sliders, {})
 })
 
 test('region share becomes available again when a descendant overrides an exclusion', () => {

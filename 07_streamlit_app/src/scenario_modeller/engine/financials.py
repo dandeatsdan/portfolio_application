@@ -42,8 +42,9 @@
 # unique case/metric/year rows are checked. Country mappings and tax-rate
 # joins must be unambiguous; missing required mappings/rates cause errors.
 # When a pre-tax cash-flow row has no matching RCOP row, cash tax is treated
-# as zero and a diagnostic records that specific convention. This exception
-# does not mean all missing financial inputs are silently accepted.
+# as zero and a diagnostic records that specific convention. Sparse inputs
+# are valid: derive each financial metric only where its source rows exist.
+# No cash-flow rows are invented for cases or years without pre-tax cash flow.
 #
 # Keep financial signs separate from display signs
 # ------------------------------------------------
@@ -124,8 +125,6 @@ def calculate_post_tax(
     rates = validate_tax_rates(tax_rates)
     urcop = data.loc[data["Metric"] == URCOP].copy()
     fcf = data.loc[data["Metric"] == PRE_TAX_FCF].copy()
-    if urcop.empty or fcf.empty:
-        raise ValueError(f"financials: requires {URCOP} and {PRE_TAX_FCF}")
     urcop = urcop.merge(
         rates[["Country Key", "Year", "ETR", "CTR"]],
         on=["Country Key", "Year"], how="left", validate="many_to_one",

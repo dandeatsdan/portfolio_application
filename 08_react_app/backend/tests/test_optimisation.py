@@ -118,11 +118,11 @@ def test_empty_optimum_is_explicit_and_cannot_be_handed_off(portfolio):
     assert 'empty' in result['diagnostics'][0]
 
 
-def test_missing_nonfinite_and_incorrect_sign_data_rejected(portfolio):
+def test_empty_cases_nonfinite_and_incorrect_sign_data_rejected(portfolio):
     profiles, _, cases, _ = portfolio
     spec = OptimisationSpec()
-    with pytest.raises(ValueError, match='Missing Cash Capex'):
-        service.prepare_coefficients(profiles.loc[~((profiles.ID == 1) & (profiles.Metric == 'Cash Capex'))], cases, spec)
+    with pytest.raises(ValueError, match='No analytical profile rows'):
+        service.prepare_coefficients(profiles.loc[profiles.ID != 1], cases, spec)
     bad = profiles.copy()
     bad.loc[0, 'Value'] = np.nan
     with pytest.raises(ValueError, match='non-finite'):
@@ -142,6 +142,114 @@ def test_replay_mismatch_never_publishes(portfolio, monkeypatch):
     monkeypatch.setattr(service, 'execute_scenario', wrong)
     with pytest.raises(ValueError, match='does not reconcile'):
         run(portfolio)
+
+
+@pytest.fixture
+def sparse_portfolio():
+    cases = pd.DataFrame([{'ID': i, 'Case': f'Case {i}', 'Case Name': f'Project {i}',
+                          'Country Key': '1', 'Region': 'North' if i == 1 else 'South',
+                          'Group Entity': 'Oil' if i == 1 else 'Gas'} for i in [1, 2, 3, 4]])
+    raw = pd.DataFrame([
+        {'ID': i, 'Case': f'Case {i}', 'Metric': metric, 'Year': year, 'Value': value}
+        for i, metric, year, value in [
+            (1, 'Pre Tax Cash Flow', 2026, 108), (1, 'Underlying RCOP', 2026, 0),
+            (1, 'Cash Capex', 2026, -10), (2, 'Total Production (mboed)', 2027, 20),
+            (3, 'Cash Capex', 2028, -5), (4, 'Underlying RCOP', 2027, 30),
+        ]])
+    rates = pd.DataFrame([{'Country': 'Example', 'Country Key': '1', 'Year': y,
+                           'ETR': .2, 'CTR': .2} for y in range(2026, 2029)])
+    profiles, _ = calculate_post_tax(raw, cases, rates)
+    return profiles, raw, cases, rates
+
+
+@pytest.mark.parametrize('objective,expected', [
+    ('post_tax_npv', 100), ('post_tax_fcf', 108),
+    ('underlying_rcop', 30), ('production', 20 * .36525),
+])
+def test_sparse_metrics_and_years_contribute_zero_and_reconcile(sparse_portfolio, objective, expected):
+    before = [frame.copy(deep=True) for frame in sparse_portfolio]
+    constraints = (limit(15, year_to=2028),
+                   limit(20, id='production', metric='production', basis='each_year', year_to=2028))
+    result = service.optimise(*sparse_portfolio, OptimisationSpec(2026, 2028, constraints,
+        mandatory_case_ids=(1, 2, 3, 4), objective=objective))
+    assert result['status'] == 'optimal' and result['reconciled']
+    assert result['objective_value'] == pytest.approx(expected)
+    assert result['capex'] == 15
+    assert result['production'] == pytest.approx(20 * .36525)
+    assert [c['actual'] for c in result['constraint_checks']] == [15, 0, 20, 0]
+    rows = {c['id']: c for c in result['cases']}
+    assert rows[1]['production'] == 0  # Financial contribution without production.
+    assert rows[2]['capex'] == rows[2]['npv'] == 0  # Production without financial rows.
+    assert rows[4]['npv'] == 0  # RCOP does not invent a missing cash-flow profile.
+    for original, after in zip(before, sparse_portfolio):
+        pd.testing.assert_frame_equal(original, after)
+
+
+@pytest.mark.parametrize('case_id', [1, 2, 3, 4])
+def test_sparse_selected_portfolio_can_replay_without_complete_financial_metrics(sparse_portfolio, case_id):
+    result = service.optimise(*sparse_portfolio, OptimisationSpec(2026, 2028,
+        mandatory_case_ids=(case_id,), excluded_case_ids=tuple(i for i in [1, 2, 3, 4] if i != case_id)))
+    assert result['status'] == 'optimal' and result['reconciled']
+    assert result['selected_case_ids'] == [case_id]
+    assert result['objective_value'] == pytest.approx(100 if case_id == 1 else 0)
+
+
+def test_sparse_production_mix_includes_financial_only_cases(sparse_portfolio):
+    from scenario_modeller.domain.optimisation import MixConstraint
+    result = service.optimise(*sparse_portfolio, OptimisationSpec(2026, 2028,
+        mix_constraints=(MixConstraint('group_entity', 'Oil', 0, 0), MixConstraint('group_entity', 'Gas', 100, 0))))
+    assert result['status'] == 'optimal' and result['reconciled']
+    assert {1, 2}.issubset(result['selected_case_ids'])
+    assert result['objective_value'] == pytest.approx(100)
+    assert [c['actual_share_pct'] for c in result['mix_checks']] == pytest.approx([0, 100])
+    assert all(c['satisfied'] for c in result['mix_checks'])
+
+
+def test_sparse_api_reference_and_solve(sparse_portfolio, monkeypatch):
+    for field, value in zip(['profiles', 'raw_profiles', 'case_listing', 'tax_rates'], sparse_portfolio):
+        monkeypatch.setattr(app_state, field, value, raising=False)
+    monkeypatch.setattr(app_state, 'invert_metrics', set(), raising=False)
+    client = TestClient(app)
+    reference = client.get('/api/portfolio/reference_measure', params={
+        'metric': 'Total Production (mboed)', 'year_from': 2026, 'year_to': 2028})
+    assert reference.status_code == 200, reference.text
+    assert {r['id']: r['value'] for r in reference.json()} == {1: None, 2: 20 * .36525, 3: None, 4: None}
+    result = client.post('/api/optimisation/solve', json={'mode': 'mix', 'year_from': 2026, 'year_to': 2028,
+        'case_rules': [{'case_id': i, 'rule': 'mandatory'} for i in [1, 2, 3, 4]]})
+    assert result.status_code == 200, result.text
+    assert result.json()['reconciled']
+    assert result.json()['objective_value'] == pytest.approx(100)
+    scenario = client.post('/api/scenario/run', json={'instructions': [
+        {'id': i, 'case': f'Case {i}', 'include': i == 2, 'operation': 'NoChange'} for i in [1, 2, 3, 4]]})
+    assert scenario.status_code == 200, scenario.text
+    assert scenario.json()['valid']
+    assert [(r['id'], r['metric'], r['year'], r['value']) for r in scenario.json()['results']] == [
+        (2, 'Total Production (mboed)', 2027, 20)]
+
+
+def test_absent_years_still_enforce_annual_minima(sparse_portfolio):
+    result = service.optimise(*sparse_portfolio, OptimisationSpec(2026, 2028,
+        constraints=(limit(1, metric='production', basis='each_year', operator='min', year_to=2028),)))
+    assert result['status'] == 'infeasible'  # No production exists in 2026 or 2028.
+
+
+def test_period_with_no_profiles_has_zero_contributions(sparse_portfolio):
+    result = service.optimise(*sparse_portfolio, OptimisationSpec(2030, 2032, mandatory_case_ids=(1,)))
+    assert result['status'] == 'optimal' and result['reconciled']
+    assert result['objective_value'] == result['capex'] == result['production'] == 0
+
+
+def test_portfolio_without_production_can_optimise_finances_but_not_mix(sparse_portfolio):
+    from scenario_modeller.domain.optimisation import MixConstraint
+    profiles, raw, cases, rates = sparse_portfolio
+    financial_only = (profiles.loc[profiles.ID != 2], raw.loc[raw.ID != 2], cases.loc[cases.ID != 2], rates)
+    result = service.optimise(*financial_only, OptimisationSpec(2026, 2028))
+    assert result['status'] == 'optimal' and result['reconciled']
+    assert result['objective_value'] == pytest.approx(100)
+    assert result['production'] == 0
+    with pytest.raises(ValueError, match='positive reference production'):
+        service.optimise(*financial_only, OptimisationSpec(2026, 2028,
+            mix_constraints=(MixConstraint('group_entity', 'Oil', 50), MixConstraint('group_entity', 'Gas', 50))))
 
 
 @pytest.mark.parametrize('update', [
