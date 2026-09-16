@@ -496,6 +496,7 @@ The following documents record analysis, design decisions and implementation bri
 | [`Scenario-Results-Redesign-Implementation-Brief.md`](Scenario-Results-Redesign-Implementation-Brief.md) | Results-workspace redesign brief. Substantial parts are now implemented in the current Results page. |
 | [`Portfolio-Optimiser-Implementation-Brief.md`](Portfolio-Optimiser-Implementation-Brief.md) | Original optimiser design with the current unified workflow noted at the top. |
 | [`Portfolio-Optimiser-Remediation-Plan.md`](Portfolio-Optimiser-Remediation-Plan.md) | Current simplified implementation decisions and verification, followed by the historical review. |
+| [`Portfolio-Optimiser-Next-Steps-Plan.md`](Portfolio-Optimiser-Next-Steps-Plan.md) | Planned operation toggles, FCF constraints, consistent case controls and plan-type rules, reference-relative targets, priorities and direct recommendation actions. |
 
 These documents may contain historical design assumptions that have since been superseded by the current code. Always inspect the implementation before treating a brief as current behaviour.
 
