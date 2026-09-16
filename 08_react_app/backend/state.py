@@ -6,7 +6,7 @@
 # -------
 # AppState holds the reference datasets needed by API requests. main.py
 # calls load during application startup. The data directory is discovered
-# from the candidate sibling sample-data paths defined below.
+# from the local real-data and fallback sample-data paths defined below.
 #
 # Loading sequence
 # ----------------
@@ -40,7 +40,7 @@
 """
 Application-level state loaded once at startup.
 
-DataFrames are loaded from the sample data directory and held in memory.
+DataFrames are loaded from local real data, or sample data, and held in memory.
 The backend is stateless for scenario runs — all inputs come in via POST body.
 """
 
@@ -57,13 +57,11 @@ from scenario_modeller.data.loaders import (
 from scenario_modeller.engine.financials import calculate_post_tax, source_profiles
 from scenario_modeller.services.portfolio_service import add_derived_totals
 
-# Data lives in the sibling Streamlit app's sample directory.
-# Adjust this path if the folder is renamed or moved.
+# Prefer repository-root local real data, then the Streamlit app's sample data.
 _HERE = Path(__file__).parent
 _DATA_CANDIDATES = [
     _HERE.parent.parent / "data" / "real",
     _HERE.parent.parent / "07_streamlit_app" / "data" / "sample",
-    _HERE.parent.parent / "07_software_project" / "data" / "sample",
 ]
 
 
@@ -72,8 +70,8 @@ def _find_data_dir() -> Path:
         if candidate.exists():
             return candidate
     raise FileNotFoundError(
-        "Cannot locate sample data directory. "
-        "Expected at 07_streamlit_app/data/sample/ or 07_software_project/data/sample/."
+        "Cannot locate data directory. "
+        "Expected at data/real/ or 07_streamlit_app/data/sample/."
     )
 
 
