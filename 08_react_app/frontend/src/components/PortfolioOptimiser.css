@@ -69,6 +69,17 @@
 .optimiser-case--unselected { background: #f4f4f4; border-left: 3px solid transparent; color: #5c5c5c; }
 .optimiser-case--unselected .results-case-id { color: #5c5c5c; }
 
+/* Match the case tables in Build a Scenario. */
+.results-panel .optimiser-cases-table { table-layout: fixed; min-width: 1150px; font-size: 13px; }
+.results-panel .optimiser-cases-table th { padding: 8px 10px; border-bottom: 2px solid var(--color-border-strong); color: var(--color-text-muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.optimiser-cases-table th .results-sort { width: 100%; letter-spacing: inherit; text-transform: inherit; }
+.optimiser-cases-table th .results-sort span { flex-shrink: 0; }
+.results-panel .optimiser-cases-table td { padding: 7px 10px; overflow-wrap: anywhere; }
+.optimiser-cases-table .optimiser-cell--numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.optimiser-cases-table .optimiser-cell--numeric .results-sort { justify-content: flex-end; }
+.optimiser-cases-table .optimiser-cell--id { color: var(--color-text-muted); }
+.optimiser-cases-table .optimiser-cell--name { font-weight: 500; }
+
 .optimiser-control-region { padding: 16px 0; border-top: 1px solid var(--color-border); }
 .optimiser-control-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, 280px); align-items: center; gap: 16px; margin-bottom: 12px; }
 .optimiser-control-row small { display: block; margin-top: 5px; }

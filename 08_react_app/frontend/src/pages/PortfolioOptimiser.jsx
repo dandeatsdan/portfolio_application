@@ -117,14 +117,24 @@ export default function PortfolioOptimiser() {
   if (portfolioError) return <p role="alert">{portfolioError}</p>
 
   const result = outcome?.result
+  const caseMetadata = new Map(cases.map(c => [c.id, c]))
   const rows = sortRecommendedCases(
-    (result?.cases ?? []).filter(c => `${c.name} ${c.id}`.toLowerCase().includes(search.trim().toLowerCase())),
+    (result?.cases ?? []).map(c => {
+      const metadata = caseMetadata.get(c.id)
+      return { ...c, region: metadata?.region ?? '', country: metadata?.country ?? '', plan_type: metadata?.plan_type ?? '' }
+    }).filter(c => `${c.name} ${c.id}`.toLowerCase().includes(search.trim().toLowerCase())),
     sort
   )
   const columns = [
-    { key: 'name', label: 'Case' }, { key: 'selected', label: 'Recommendation' },
-    { key: 'objective_contribution', label: `${result?.objective_label ?? 'Objective'} (${result?.objective_unit ?? '$m'})` }, { key: 'capex', label: 'Cash Capex ($m)' },
-    { key: 'production', label: 'Production (mmboe)' },
+    { key: 'id', label: 'ID', numeric: true, width: '4%' },
+    { key: 'name', label: 'Case Name', width: '17%' },
+    { key: 'region', label: 'Region', width: '11%' },
+    { key: 'country', label: 'Country', width: '11%' },
+    { key: 'plan_type', label: 'Plan Type', width: '9%' },
+    { key: 'selected', label: 'Recommendation', width: '14%' },
+    { key: 'objective_contribution', label: `${result?.objective_label ?? 'Objective'} (${result?.objective_unit ?? '$m'})`, numeric: true, width: '12%' },
+    { key: 'capex', label: 'Cash Capex ($m)', numeric: true, width: '11%' },
+    { key: 'production', label: 'Production (mmboe)', numeric: true, width: '11%' },
   ]
   const blocked = runGateBlocked(draft) || (hasMixTargets(draft) && !referenceReady) || draft.year_from > draft.year_to
   const controlStates = cases.map(c => effectiveCaseRule(draft, c))
@@ -339,14 +349,16 @@ export default function PortfolioOptimiser() {
               )}
               <p className="text-small text-muted">{rows.length} of {result.cases.length} cases shown. Recommended cases appear first.</p>
               <div className="results-table-scroll">
-                <table>
+                <table className="optimiser-cases-table" aria-label="Recommended cases">
+                  <colgroup>{columns.map(c => <col key={c.key} style={{ width: c.width }} />)}</colgroup>
                   <thead>
                     <tr>
                       {columns.map(c => {
                         const direction = sort?.key === c.key ? sort.direction : undefined
                         return (
-                          <th key={c.key} scope="col" aria-sort={direction}>
-                            <button className="results-sort"
+                          <th key={c.key} scope="col" aria-sort={direction} className={c.numeric ? 'optimiser-cell--numeric' : undefined}>
+                            <button type="button" className="results-sort"
+                              aria-label={`${c.label}: sort ${direction === 'ascending' ? 'descending' : 'ascending'}`}
                               onClick={() => setSort({ key: c.key, direction: direction === 'ascending' ? 'descending' : 'ascending' })}>
                               {c.label} <span aria-hidden="true">{direction === 'ascending' ? '▲' : direction === 'descending' ? '▼' : '↕'}</span>
                             </button>
@@ -358,14 +370,18 @@ export default function PortfolioOptimiser() {
                   <tbody>
                     {rows.map(c => (
                       <tr key={c.id} className={c.selected ? 'optimiser-case--recommended' : 'optimiser-case--unselected'}>
-                        <td>{c.name}<small className="results-case-id">ID {c.id}</small></td>
+                        <td className="optimiser-cell--numeric optimiser-cell--id">{c.id}</td>
+                        <td className="optimiser-cell--name">{c.name}</td>
+                        <td>{c.region || '—'}</td>
+                        <td>{c.country || '—'}</td>
+                        <td>{c.plan_type || '—'}</td>
                         <td>{c.selected ? 'Recommended' : 'Not selected'}</td>
-                        <td>{fmt(c.objective_contribution)}</td>
-                        <td>{fmt(c.capex)}</td>
-                        <td>{fmt(c.production)}</td>
+                        <td className="optimiser-cell--numeric">{fmt(c.objective_contribution)}</td>
+                        <td className="optimiser-cell--numeric">{fmt(c.capex)}</td>
+                        <td className="optimiser-cell--numeric">{fmt(c.production)}</td>
                       </tr>
                     ))}
-                    {!rows.length && <tr><td colSpan={5}>No cases match your search.</td></tr>}
+                    {!rows.length && <tr><td colSpan={columns.length}>No cases match your search.</td></tr>}
                   </tbody>
                 </table>
               </div>
