@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import './RunConfirmation.css'
+import { timingLabel } from '../pages/optimiserHelpers'
 
 export default function RecommendationConfirmation({ result, replacesUnsaved, onCancel, onConfirm }) {
   const dialogRef = useRef(null)
@@ -18,13 +19,17 @@ export default function RecommendationConfirmation({ result, replacesUnsaved, on
       if (opener?.isConnected) opener.focus()
     }
   }, [])
+  const shifted = result.cases.filter(c => c.selected && c.year_shift)
+  const shiftedIds = new Set(shifted.map(c => c.id))
   const groups = [
-    { title: 'Included — Available cases', ids: result.selected_case_ids,
+    { title: 'Included unchanged — Available cases', ids: result.selected_case_ids.filter(id => !shiftedIds.has(id)),
       description: 'These recommended cases stay included using their reference profiles. You’ll find them under Available cases in the scenario builder.' },
+    ...(shifted.length ? [{ title: 'Timing changes — Shortlisted cases', ids: shifted.map(c => c.id),
+      description: 'These cases stay included and move to Shortlisted cases with their recommended Delay or Accelerate operation. Only the year-shift parameter is set; all cost parameters are zero.' }] : []),
     { title: 'Excluded — Shortlisted cases', ids: result.excluded_case_ids,
       description: 'These cases move to Shortlisted cases with their configuration set to Excluded. This makes each exclusion visible and easy to review or change.' },
   ]
-  const names = new Map(result.cases.map(c => [c.id, c.name]))
+  const names = new Map(result.cases.map(c => [c.id, `${c.name}${shiftedIds.has(c.id) ? ` · ${timingLabel(c)}` : ''}`]))
   return <dialog ref={dialogRef} className="run-confirmation" aria-labelledby="recommendation-confirmation-title"
     aria-describedby="recommendation-confirmation-description" onCancel={event => { event.preventDefault(); onCancel() }}>
     <header>

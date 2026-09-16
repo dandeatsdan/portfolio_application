@@ -4,8 +4,8 @@
 
 The current user decisions supersede the historical recommendations below.
 
-- **One workflow:** Objective → Constraints → Run. An optional Portfolio controls side pane contains production mix targets and hierarchical Region → Country → Case selections. Mix targets start off; cases default to Optimiser chooses.
-- Closing the pane preserves active settings. The main page shows enabled mix dimensions and effective required/excluded counts. Clear portfolio controls turns off mix targets and removes all hierarchy rules while preserving the objective, period and constraints.
+- **One workflow:** Objective → Constraints → Run. An optional Advanced controls side pane contains production mix targets and hierarchical Region → Country → Case selections. Mix targets start off; cases default to Optimiser chooses.
+- Closing the pane preserves active settings. The main page shows enabled mix dimensions and effective required/excluded counts. Clear advanced controls turns off mix targets and removes all hierarchy rules while preserving the objective, period and constraints.
 - All users can choose Post-tax NPV, Free Cash Flow, Underlying RCOP and Production. NPV uses the shared 8% fixed-2026 valuation service. FCF sums post-tax cash flow without discounting; Underlying RCOP sums the before-tax source metric without discounting; production sums annual rates with the existing 0.36525 conversion to mmboe. NPV remains the default.
 - Result metadata, table headings, units and saved scenario rationale follow the chosen objective. `objective_contribution` and `reference_objective_value` are objective-neutral. Legacy `npv` and `reference_npv` always contain discounted NPV.
 - Region controls set the broad rule. Country rules override their region; individual case rules override both. Country identity is scoped by region. Unspecified rules inherit; explicit `optional` means the optimiser chooses, clearing an inherited requirement or exclusion. Changing a parent preserves more-specific overrides. The UI shows effective counts.
@@ -19,6 +19,20 @@ The current user decisions supersede the historical recommendations below.
 Validation for the unified workflow and sparse profiles: 92 frontend tests and all 218 Python/API tests passed; production build passed with the existing bundle-size warning. Tests cover default controls off, independent mix and case controls, explicit clearing without changing the objective or constraints, all four objectives, hierarchical overrides, scenario hand-off and solver reconciliation. Browser checks confirmed default and mix-enabled solves, hierarchy overrides after closing the pane, retained settings on reopening, explicit clearing, keyboard dismissal/focus restoration, and desktop/390px mobile layouts without internal overflow or runtime errors. Sparse-data regression checks cover missing metrics and years, financial-only and production-only selections, annual minima in absent years, all four objectives, positive mix denominators, and scenario API replay. Automated checks do not constitute business validation.
 
 Tied optima may select different cases; no secondary tie-breaking business objective is imposed. Exact-ID fixtures use unique optima.
+
+## Feature branch — timing and constraint-period values
+
+- The optional side pane is named **Advanced controls**, including its trigger, heading, close label and clear action, to accommodate further optimiser settings.
+
+- Optional Delay/Accelerate limits: off by default; 2 years each initially; editable whole years from 0 to 14. Setting a direction to 0 disables it.
+- Alternatives use existing operations with only Param1 set. No penalties, incremental Capex or acquisition costs. Tax and discounting follow destination years.
+- At most one alternative per case; inclusion rules require exactly one, exclusions require none. Each alternative contributes its own shifted objective, constraint coefficients and production shares.
+- Nonzero source values must stay within 2026–2040. Options that would clip them or leave no rows are omitted and counted. Objective and constraint periods remain independent of this complete modelling horizon.
+- Batched alternative preparation shares the solve budget. Independent checks and a full scenario replay verify the chosen operation per case before publication. Original reference totals remain unshifted.
+- Shifted cases are shortlisted in scenario hand-off with the selected operation and all other parameters zero. Unchanged included cases remain available; exclusions remain explicit.
+- Optional constraint-period columns show per-case contributions for the configured dates and units, using one column per annual limit. Selected-case sums reconcile with portfolio checks; unselected rows show their unchanged contributions and scoped constraints give zero outside scope.
+- Validation: 245 Python/API tests and 95 frontend tests passed; production build passed with its existing chunk-size warning. Independent enumeration covers all objectives; additional checks cover exclusivity, delay under annual budgets, acceleration/tax/NPV, scoped production, shifted mix shares, horizon bounds, timeout withholding, replay mismatch, scenario API hand-off, parameter preservation and constraint-period totals.
+- Browser verification with temporary in-memory sample profiles confirmed the optional timing controls, delay and acceleration recommendations, dated constraint columns, and hand-off into an unsaved scenario with the chosen operation and no extra costs. No browser runtime errors were reported.
 
 ## Historical review
 

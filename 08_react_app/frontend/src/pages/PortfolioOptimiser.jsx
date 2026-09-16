@@ -12,12 +12,12 @@ import {
   YEARS, OBJECTIVES, DEFAULT_OPTIMISER, newConstraint, constraintUnit,
   optimiserRequest, recommendationDefinition, sortRecommendedCases,
   referenceMix, excludeRegionShares, excludedRegionRules, changeControlRules, effectiveCaseRule,
-  clearPortfolioControls, hasMixTargets, runGateBlocked,
+  clearPortfolioControls, hasMixTargets, runGateBlocked, timingLabel, constraintPeriodColumns, caseConstraintValues,
 } from './optimiserHelpers'
 import '../components/ScenarioResults.css'
 import '../components/PortfolioOptimiser.css'
 
-const fmt = value => value == null ? '—' : Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })
+const fmt = value => value == null ? '—' : (Number(value) === 0 ? 0 : Number(value)).toLocaleString(undefined, { maximumFractionDigits: 2 })
 const STATUSES = {
   optimal:    'Optimal selection',
   infeasible: 'No feasible portfolio within the permitted limits',
@@ -54,6 +54,7 @@ export default function PortfolioOptimiser() {
   const [outcome, setOutcome] = useState(null)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState(null)
+  const [showConstraintValues, setShowConstraintValues] = useState(false)
   const generation = useRef(0)
   const runLock = useRef(false)
   const resultRef = useRef(null)
@@ -121,27 +122,30 @@ export default function PortfolioOptimiser() {
   const rows = sortRecommendedCases(
     (result?.cases ?? []).map(c => {
       const metadata = caseMetadata.get(c.id)
-      return { ...c, region: metadata?.region ?? '', country: metadata?.country ?? '', plan_type: metadata?.plan_type ?? '' }
+      return { ...c, ...caseConstraintValues(c), timing_label: timingLabel(c), region: metadata?.region ?? '', country: metadata?.country ?? '', plan_type: metadata?.plan_type ?? '' }
     }).filter(c => `${c.name} ${c.id}`.toLowerCase().includes(search.trim().toLowerCase())),
     sort
   )
+  const periodColumns = showConstraintValues ? constraintPeriodColumns(result?.constraint_checks, outcome?.request.constraints) : []
   const columns = [
     { key: 'id', label: 'ID', numeric: true, width: '4%' },
-    { key: 'name', label: 'Case Name', width: '17%' },
-    { key: 'region', label: 'Region', width: '11%' },
-    { key: 'country', label: 'Country', width: '11%' },
-    { key: 'plan_type', label: 'Plan Type', width: '9%' },
-    { key: 'selected', label: 'Recommendation', width: '14%' },
-    { key: 'objective_contribution', label: `${result?.objective_label ?? 'Objective'} (${result?.objective_unit ?? '$m'})`, numeric: true, width: '12%' },
-    { key: 'capex', label: 'Cash Capex ($m)', numeric: true, width: '11%' },
-    { key: 'production', label: 'Production (mmboe)', numeric: true, width: '11%' },
+    { key: 'name', label: 'Case Name', width: '15%' },
+    { key: 'region', label: 'Region', width: '10%' },
+    { key: 'country', label: 'Country', width: '10%' },
+    { key: 'plan_type', label: 'Plan Type', width: '8%' },
+    { key: 'selected', label: 'Recommendation', width: '12%' },
+    { key: 'year_shift', label: 'Timing', width: '10%' },
+    { key: 'objective_contribution', label: `${result?.objective_label ?? 'Objective'} (${result?.objective_unit ?? '$m'})`, numeric: true, width: '11%' },
+    { key: 'capex', label: 'Cash Capex ($m)', numeric: true, width: '10%' },
+    { key: 'production', label: 'Production (mmboe)', numeric: true, width: '10%' },
+    ...periodColumns,
   ]
   const blocked = runGateBlocked(draft) || (hasMixTargets(draft) && !referenceReady) || draft.year_from > draft.year_to
   const controlStates = cases.map(c => effectiveCaseRule(draft, c))
   const requiredCount = controlStates.filter(s => s === 'mandatory').length
   const excludedCount = controlStates.filter(s => s === 'excluded').length
   const mixLabels = [draft.group_entity_mix.enabled && 'Oil / Gas', draft.region_mix.enabled && 'Regional'].filter(Boolean)
-  const controlsSummary = `${mixLabels.length ? `${mixLabels.join(' and ')} mix targets applied` : 'No mix targets'} · ${requiredCount} ${requiredCount === 1 ? 'case' : 'cases'} required · ${excludedCount} excluded`
+  const controlsSummary = `${mixLabels.length ? `${mixLabels.join(' and ')} mix targets applied` : 'No mix targets'} · ${requiredCount} ${requiredCount === 1 ? 'case' : 'cases'} required · ${excludedCount} excluded${draft.timing.enabled ? ` · Delay up to ${draft.timing.max_delay_years} years / accelerate up to ${draft.timing.max_acceleration_years} years` : ''}`
 
   return (
     <div className="portfolio-optimiser">
@@ -151,17 +155,17 @@ export default function PortfolioOptimiser() {
         <div>
           <h2>Portfolio Optimiser</h2>
           <p>Choose what to maximise and find a portfolio that meets your limits.</p>
-          <p className="text-small text-muted">All {cases.length} reference cases are candidates. Decisions are include or exclude at reference profiles.</p>
+          <p className="text-small text-muted">All {cases.length} cases are candidates. Optional advanced controls let you set mix, case selections and timing choices.</p>
           <p className="text-small text-muted">Metrics and years with no profile rows contribute zero.</p>
         </div>
       </div>
 
       <div className="optimiser-controls-summary">
-        <div><strong>Portfolio controls <span className="text-muted">· Optional</span></strong>
+        <div><strong>Advanced controls <span className="text-muted">· Optional</span></strong>
           <p className="text-small text-muted" aria-live="polite">{controlsSummary}</p></div>
         <button type="button" className="saved-scenarios__trigger" aria-haspopup="dialog"
           disabled={running} onClick={() => setControlsOpen(true)}>
-          <SlidersHorizontal size={16} /> Portfolio controls
+          <SlidersHorizontal size={16} /> Advanced controls
         </button>
       </div>
 
@@ -265,7 +269,7 @@ export default function PortfolioOptimiser() {
             </div>
             {blocked && !running && (
               <p role="alert" className="text-small" style={{ color: '#c0392b' }}>
-                Check the year range and portfolio controls. Enabled mix targets need loaded reference data and must total 100%.
+                Check the year range and advanced controls. Mix targets must total 100%; timing limits must be whole years from 0 to 14.
               </p>
             )}
             {running && <p role="status">Finding a portfolio that meets your limits…</p>}
@@ -302,6 +306,9 @@ export default function PortfolioOptimiser() {
           {result.status === 'time_limit' && (
             <p>No optimal recommendation was established within the time limit.</p>
           )}
+          {result.timing_options_omitted > 0 && <p className="text-small text-muted">
+            {result.timing_options_omitted} timing options were unavailable because they would move nonzero values outside 2026–2040 or leave no profile rows.
+          </p>}
 
           {result.status === 'optimal' && (
             <>
@@ -347,10 +354,21 @@ export default function PortfolioOptimiser() {
               {result.selected_case_ids.length === 0 && (
                 <p>No cases recommended. Add a production minimum or require a case to build a scenario.</p>
               )}
-              <p className="text-small text-muted">{rows.length} of {result.cases.length} cases shown. Recommended cases appear first.</p>
+              {result.constraint_checks.length > 0 && <label className="optimiser-check-label">
+                <input type="checkbox" checked={showConstraintValues}
+                  onChange={event => { setShowConstraintValues(event.target.checked); setSort(null) }} />
+                Show constraint-period values
+              </label>}
+              <p className="text-small text-muted">{rows.length} of {result.cases.length} cases shown. Recommended cases appear first.
+                {' '}Main metric columns cover {outcome.request.year_from}–{outcome.request.year_to}.
+                {' '}Values for recommended cases include their timing changes; values for unselected cases show their reference profiles.</p>
+              {showConstraintValues && result.constraint_checks.length > 0 && <p className="text-small text-muted">
+                C1, C2, etc. follow the constraint order above. Annual limits have one column per year; totals use the specified period.
+                Only recommended cases contribute to the portfolio constraint checks. Cases outside a constraint’s scope contribute zero.
+              </p>}
               <div className="results-table-scroll">
-                <table className="optimiser-cases-table" aria-label="Recommended cases">
-                  <colgroup>{columns.map(c => <col key={c.key} style={{ width: c.width }} />)}</colgroup>
+                <table className="optimiser-cases-table" aria-label="Recommended cases" style={{ minWidth: 1150 + periodColumns.length * 160 }}>
+                  <colgroup>{columns.map(c => <col key={c.key} style={{ width: periodColumns.length && !c.constraint ? parseFloat(c.width) * 11.5 : c.width }} />)}</colgroup>
                   <thead>
                     <tr>
                       {columns.map(c => {
@@ -376,9 +394,11 @@ export default function PortfolioOptimiser() {
                         <td>{c.country || '—'}</td>
                         <td>{c.plan_type || '—'}</td>
                         <td>{c.selected ? 'Recommended' : 'Not selected'}</td>
+                        <td>{c.timing_label}</td>
                         <td className="optimiser-cell--numeric">{fmt(c.objective_contribution)}</td>
                         <td className="optimiser-cell--numeric">{fmt(c.capex)}</td>
                         <td className="optimiser-cell--numeric">{fmt(c.production)}</td>
+                        {periodColumns.map(column => <td className="optimiser-cell--numeric" key={column.key}>{fmt(c[column.key])}</td>)}
                       </tr>
                     ))}
                     {!rows.length && <tr><td colSpan={columns.length}>No cases match your search.</td></tr>}

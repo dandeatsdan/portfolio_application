@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import OptimiserControls from './OptimiserControls'
-import { changeMixShare, excludeRegionShares, excludedRegionRules, mixTotal, runGateBlocked } from '../pages/optimiserHelpers'
+import { changeMixShare, excludeRegionShares, excludedRegionRules, mixTotal, runGateBlocked, timingBlocked } from '../pages/optimiserHelpers'
 import './ReferenceConfig.css'
 
 const fmt = value => value == null ? '—' : Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })
@@ -63,11 +63,36 @@ export default function OptimiserPortfolioControls({ cases, draft, reference, re
       if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose()
     }}>
     <header className="reference-config__header">
-      <div><h2 id="portfolio-controls-title">Portfolio controls</h2>
+      <div><h2 id="portfolio-controls-title">Advanced controls</h2>
         <p id="portfolio-controls-description">Optional settings for your next optimisation. Changes apply immediately and stay active when you close this pane.</p></div>
-      <button type="button" className="reference-config__close" aria-label="Close portfolio controls" onClick={onClose}><X size={20} /></button>
+      <button type="button" className="reference-config__close" aria-label="Close advanced controls" onClick={onClose}><X size={20} /></button>
     </header>
     <div className="reference-config__content">
+      <section aria-labelledby="timing-title">
+        <h3 id="timing-title">Timing</h3>
+        <p className="text-small text-muted">Let the optimiser compare unchanged cases with earlier or later profiles.
+          Pure year shifts: no penalties, acquisition costs or extra Capex. Tax rates and discounting follow the shifted years.</p>
+        <label className="optimiser-check-label">
+          <input type="checkbox" checked={draft.timing.enabled}
+            onChange={event => onChange({ timing: { ...draft.timing, enabled: event.target.checked } })} />
+          Allow timing changes
+        </label>
+        {draft.timing.enabled && <>
+          <div className="optimiser-objective">
+            <label>Maximum delay (years)
+              <input type="number" min="0" max="14" step="1" value={draft.timing.max_delay_years}
+                onChange={e => onChange({ timing: { ...draft.timing, max_delay_years: e.target.value } })} />
+            </label>
+            <label>Maximum acceleration (years)
+              <input type="number" min="0" max="14" step="1" value={draft.timing.max_acceleration_years}
+                onChange={e => onChange({ timing: { ...draft.timing, max_acceleration_years: e.target.value } })} />
+            </label>
+          </div>
+          <p className="text-small text-muted">Use 0 to turn off a direction. Each included case gets one option.
+            Shifts that move nonzero values outside 2026–2040 are unavailable.</p>
+          {timingBlocked(draft) && <p role="alert">Enter whole years from 0 to 14, with at least one direction above zero.</p>}
+        </>}
+      </section>
       <section aria-labelledby="portfolio-mix-title">
         <h3 id="portfolio-mix-title">Portfolio mix</h3>
         <p className="text-small text-muted">Enable targets for shares of selected production over {draft.year_from}–{draft.year_to}.
@@ -84,7 +109,7 @@ export default function OptimiserPortfolioControls({ cases, draft, reference, re
           reference={reference?.shares.region} excluded={Object.keys(exclusions)}
           onChange={section => onChange({ region_mix: section })}
           onReset={() => onChange({ region_mix: { ...draft.region_mix, sliders: excludeRegionShares(reference.shares.region, exclusions) } })} />
-        {runGateBlocked(draft) && <p role="alert">Enabled mix targets must total 100%, with an allowed difference between 0 and 100 percentage points.</p>}
+        {runGateBlocked({ ...draft, timing: { enabled: false } }) && <p role="alert">Enabled mix targets must total 100%, with an allowed difference between 0 and 100 percentage points.</p>}
         <p className="text-small text-muted">Excluding every case in a region redistributes its regional target to the others. Oil / Gas targets stay as set and may need adjusting.</p>
       </section>
       <section aria-labelledby="case-selection-title">
@@ -103,7 +128,7 @@ export default function OptimiserPortfolioControls({ cases, draft, reference, re
       </section>
     </div>
     <footer className="reference-config__footer">
-      <button type="button" className="reference-config__cancel" onClick={onClear}>Clear portfolio controls</button>
+      <button type="button" className="reference-config__cancel" onClick={onClear}>Clear advanced controls</button>
       <button type="button" className="reference-config__apply" onClick={onClose}>Done</button>
     </footer>
   </dialog>

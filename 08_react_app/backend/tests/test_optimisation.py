@@ -206,6 +206,7 @@ def test_sparse_production_mix_includes_financial_only_cases(sparse_portfolio):
 
 
 def test_sparse_api_reference_and_solve(sparse_portfolio, monkeypatch):
+    monkeypatch.setattr(app_state, 'baseline_diagnostics', [], raising=False)
     for field, value in zip(['profiles', 'raw_profiles', 'case_listing', 'tax_rates'], sparse_portfolio):
         monkeypatch.setattr(app_state, field, value, raising=False)
     monkeypatch.setattr(app_state, 'invert_metrics', set(), raising=False)

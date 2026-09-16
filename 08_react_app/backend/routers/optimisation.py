@@ -122,6 +122,8 @@ class OptimisationRequest(StrictModel):
     constraints: list[ConstraintInput] = Field(default_factory=list, max_length=30)
     mandatory_case_ids: list[int] = Field(default_factory=list, max_length=10000)
     excluded_case_ids: list[int] = Field(default_factory=list, max_length=10000)
+    max_delay_years: int = Field(default=0, ge=0, le=14, strict=True)
+    max_acceleration_years: int = Field(default=0, ge=0, le=14, strict=True)
 
     @model_validator(mode='after')
     def valid(self):
@@ -158,6 +160,13 @@ class ConstraintCheck(ConstraintInput):
     headroom: float
 
 
+class CaseConstraintContribution(StrictModel):
+    id: str
+    year_from: int
+    year_to: int
+    value: float
+
+
 class RecommendationCase(StrictModel):
     id: int
     name: str
@@ -166,6 +175,9 @@ class RecommendationCase(StrictModel):
     objective_contribution: float
     capex: float
     production: float
+    operation: Literal['NoChange', 'Delay', 'Accelerate'] = 'NoChange'
+    year_shift: int = 0
+    constraint_contributions: list[CaseConstraintContribution] = Field(default_factory=list)
 
 
 class MixCheck(StrictModel):
@@ -198,6 +210,7 @@ class OptimisationResponse(StrictModel):
     diagnostics: list[str]
     reconciled: bool
     solve_time_ms: int
+    timing_options_omitted: int = 0
 
 
 @router.post('/solve', response_model=OptimisationResponse)
@@ -209,7 +222,9 @@ def solve(request: OptimisationRequest):
         mix_constraints=tuple(MixConstraint(**c.model_dump()) for c in request.mix_constraints),
         region_rules=tuple(RegionRule(**r.model_dump()) for r in request.region_rules),
         country_rules=tuple(CountryRule(**r.model_dump()) for r in request.country_rules),
-        case_rules=tuple(CaseRule(**r.model_dump()) for r in request.case_rules))
+        case_rules=tuple(CaseRule(**r.model_dump()) for r in request.case_rules),
+        max_delay_years=request.max_delay_years,
+        max_acceleration_years=request.max_acceleration_years)
     if not solve_lock.acquire(blocking=False):
         raise HTTPException(409, detail='An optimisation is already running. Try again when it finishes.')
     try:

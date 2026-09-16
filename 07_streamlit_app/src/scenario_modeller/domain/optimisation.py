@@ -6,7 +6,7 @@
 # inclusive year window, min/max operator, target and flexibility allowance.
 # OptimisationSpec collects those rules with the selected objective's year
 # window and the mandatory/excluded case IDs.
-# Advanced adds production-share bands over that same year window and
+# Optional controls add production-share bands over that same year window and
 # Region -> Country -> Case inclusion/exclusion rules. More-specific choices
 # override parents; explicit optional clears inheritance. Resolved controls stay
 # strict during solver relaxation. Mix tolerances are percentage points.
@@ -24,7 +24,7 @@
 # records; services/optimisation_service.py interprets them mathematically.
 # Read those two files to follow a request from the screen into a solve.
 
-"""Immutable inputs for reference-case portfolio selection."""
+"""Immutable inputs for case selection with optional pure year-shift alternatives."""
 from dataclasses import dataclass
 
 
@@ -89,3 +89,5 @@ class OptimisationSpec:
     region_rules: tuple[RegionRule, ...] = ()
     country_rules: tuple[CountryRule, ...] = ()
     case_rules: tuple[CaseRule, ...] = ()
+    max_delay_years: int = 0
+    max_acceleration_years: int = 0

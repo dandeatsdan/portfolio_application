@@ -177,3 +177,54 @@ test('region share becomes available again when a descendant overrides an exclus
   assert.deepEqual(draft.region_mix.sliders, { North: 60, South: 40 })
   assert.equal(effectiveCaseRule(draft, cases[0]), 'mandatory')
 })
+
+test('timing is opt-in, validates whole-year bounds, and clears with optional controls', async () => {
+  const { timingBlocked } = await import('./optimiserHelpers.js')
+  assert.equal(optimiserRequest(DEFAULT_OPTIMISER).max_delay_years, 0)
+  assert.equal(optimiserRequest(DEFAULT_OPTIMISER).max_acceleration_years, 0)
+  const draft = { ...DEFAULT_OPTIMISER, timing: { enabled: true, max_delay_years: '2', max_acceleration_years: '1' } }
+  assert.equal(optimiserRequest(draft).max_delay_years, 2)
+  assert.equal(optimiserRequest(draft).max_acceleration_years, 1)
+  for (const years of ['', -1, 15, 1.5, 'bad']) {
+    const invalid = { ...draft, timing: { ...draft.timing, max_delay_years: years } }
+    assert.ok(timingBlocked(invalid))
+    assert.throws(() => optimiserRequest(invalid), /Timing limits/)
+  }
+  assert.ok(timingBlocked({ ...draft, timing: { enabled: true, max_delay_years: 0, max_acceleration_years: 0 } }))
+  assert.equal(optimiserRequest({ ...draft, ...clearPortfolioControls() }).max_delay_years, 0)
+})
+
+test('timing recommendation preserves inclusion, operations and all zero cost parameters through save and run', () => {
+  const request = optimiserRequest({ ...DEFAULT_OPTIMISER, timing: { enabled: true, max_delay_years: 2, max_acceleration_years: 1 } })
+  const result = { status: 'optimal', reconciled: true, selected_case_ids: [1, 2, 3], excluded_case_ids: [4], relaxation_pct: 0,
+    cases: [{ id: 1, selected: true, operation: 'NoChange', year_shift: 0 },
+      { id: 2, selected: true, operation: 'Delay', year_shift: 2 },
+      { id: 3, selected: true, operation: 'Accelerate', year_shift: -1 },
+      { id: 4, selected: false, operation: 'NoChange', year_shift: 0 }] }
+  const definition = recommendationDefinition(result, request)
+  assert.deepEqual(definition.shortlisted_case_ids, [4, 2, 3])
+  assert.deepEqual(definition.case_configurations[2], { include: true, operation: 'Delay', params: [2, 0, 0, 0, 0] })
+  assert.deepEqual(definition.case_configurations[3], { include: true, operation: 'Accelerate', params: [1, 0, 0, 0, 0] })
+  assert.match(definition.rationale, /Case 2: Delay 2 years/)
+  const working = scenarioReducer(initialScenario(), { type: 'recommendation', definition })
+  const saved = serializeScenario(working)
+  assert.deepEqual(saved.case_configurations[2], definition.case_configurations[2])
+  const instructions = buildScenarioInstructions([1, 2, 3, 4].map(id => ({ id, case: `Case ${id}` })), new Set(working.selectedIds), working.caseConfig)
+  assert.deepEqual(instructions.map(i => [i.include, i.operation, i.param1]), [[true, 'NoChange', 0], [true, 'Delay', 2], [true, 'Accelerate', 1], [false, 'NoChange', 0]])
+  assert.ok(instructions.every(i => [i.param2, i.param3, i.param4, i.param5].every(v => v === 0)))
+  assert.throws(() => recommendationDefinition(result, { ...request, max_delay_years: 1 }), /permitted limits/)
+})
+
+test('constraint columns use each specified period and keep annual production in rate units', async () => {
+  const { constraintPeriodColumns, caseConstraintValues, sortRecommendedCases } = await import('./optimiserHelpers.js')
+  const constraints = [{ id: 'capex' }, { id: 'annual' }]
+  const checks = [{ id: 'capex', metric: 'capex', year_from: 2026, year_to: 2028, unit: '$m' },
+    ...[2028, 2029].map(year => ({ id: 'annual', metric: 'production', year_from: year, year_to: year, unit: 'mboed' }))]
+  const columns = constraintPeriodColumns(checks, constraints)
+  assert.deepEqual(columns.map(c => c.label), ['C1: Cash Capex · 2026–2028 ($m)', 'C2: Production · 2028 (mboed)', 'C2: Production · 2029 (mboed)'])
+  const c = { constraint_contributions: checks.map((check, i) => ({ ...check, value: [50, 10, 0][i] })) }
+  const values = caseConstraintValues(c)
+  assert.deepEqual(columns.map(column => values[column.key]), [50, 10, 0])
+  const rows = [{ id: 1, selected: true, ...values }, { id: 2, selected: true, [columns[0].key]: 5 }]
+  assert.deepEqual(sortRecommendedCases(rows, { key: columns[0].key, direction: 'ascending' }).map(c => c.id), [2, 1])
+})
