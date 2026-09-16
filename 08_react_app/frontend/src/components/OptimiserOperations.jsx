@@ -18,6 +18,6 @@ export default function OptimiserOperations({ draft, onChange }) {
       </label>}
     </div>)}
     {timingBlocked(draft) && <p role="alert">Enter whole years from 1 to 14 for enabled timing operations.</p>}
-    <p className="text-small text-muted">Timing compares each whole-year shift up to the limit, with no added costs. Shifts must retain all nonzero values within 2026–2040.</p>
+    <p className="text-small text-muted">Timing compares each whole-year shift up to the limit, with no added costs.</p>
   </section>
 }

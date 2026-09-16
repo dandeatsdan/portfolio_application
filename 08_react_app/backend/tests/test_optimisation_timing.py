@@ -116,14 +116,17 @@ def test_mix_uses_shifted_production_in_objective_period(portfolio):
 @pytest.mark.parametrize('boundary,metric,value,delay,acceleration', [
     (2026, 'Cash Capex', -500, 0, 1), (2040, 'Pre Tax Cash Flow', -500, 1, 0),
 ])
-def test_shifts_cannot_improve_value_by_clipping_nonzero_rows(portfolio, boundary, metric, value, delay, acceleration):
+def test_shifts_allow_clipping_nonzero_rows_and_reconcile(portfolio, boundary, metric, value, delay, acceleration):
     _, raw, cases, rates = portfolio
     raw = pd.concat([raw, pd.DataFrame([{'ID': 1, 'Case': 'Case 1', 'Metric': metric, 'Year': boundary, 'Value': value}])], ignore_index=True)
     profiles, _ = calculate_post_tax(raw, cases, rates)
     result = service.optimise(profiles, raw, cases, rates, OptimisationSpec(2026, 2040,
         mandatory_case_ids=(1,), excluded_case_ids=(2,), max_delay_years=delay, max_acceleration_years=acceleration))
-    assert result['timing_options_omitted'] == 1
-    assert result['cases'][0]['year_shift'] == 0
+    assert result['timing_options_omitted'] == 0
+    shift = delay - acceleration
+    assert result['cases'][0]['year_shift'] == shift
+    assert result['objective_value'] == pytest.approx(manual_objective(1, shift, 'post_tax_npv'))
+    assert result['capex'] == 100
     assert result['reconciled']
 
 

@@ -237,9 +237,7 @@ export default function PortfolioOptimiser() {
       <div className="results-heading">
         <div>
           <h2>Portfolio Optimiser</h2>
-          <p>Choose what to maximise and find a portfolio that meets your limits.</p>
-          <p className="text-small text-muted">All {cases.length} cases are candidates. Optional advanced controls let you set mix, case selections and timing choices.</p>
-          <p className="text-small text-muted">Metrics and years with no profile rows contribute zero.</p>
+          <p>Maximise portfolio value or production while meeting your financial and operational targets.</p>
         </div>
       </div>
 
@@ -408,9 +406,6 @@ export default function PortfolioOptimiser() {
           {result.status === 'time_limit' && (
             <p>No optimal recommendation was established within the time limit.</p>
           )}
-          {result.timing_options_omitted > 0 && <p className="text-small text-muted">
-            {result.timing_options_omitted} timing alternatives were unavailable because a shift would clip nonzero values outside 2026–2040 or leave no profile rows.
-          </p>}
 
           {result.status === 'optimal' && (
             <>

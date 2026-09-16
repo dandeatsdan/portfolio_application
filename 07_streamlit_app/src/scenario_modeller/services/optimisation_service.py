@@ -15,7 +15,7 @@
 # It uses loaded reference profiles, with optional pure Delay/Accelerate
 # alternatives. These set only the year-shift parameter; penalty, additional
 # Capex and acquisition costs are zero. Each case has at most one selected
-# alternative. Shifts that clip nonzero rows outside 2026–2040 are unavailable.
+# alternative. Shifts clip rows outside 2026–2040 using the shared engine.
 # Tax rates and valuation use destination years through the shared engine.
 # Mandatory/excluded rules apply to the entire case. Ownership and other
 # operations, project dependencies and alternative-case groups are not offered.
@@ -645,9 +645,9 @@ def prepare_timing_options(raw_profiles, cases, tax_rates, spec, objective, limi
                 raise ValueError(f'No source profile rows for case {i}')
             shifted_years = frame.Year + shift
             inside = shifted_years.between(YEAR_MIN, YEAR_MAX)
-            # Keep the complete nonzero profile; avoid improving the objective
-            # by clipping costs or production at the modelling horizon.
-            if shift and (((frame.Value != 0) & ~inside).any() or not inside.any()):
+            # Allow horizon clipping, matching normal Delay/Accelerate. An
+            # alternative still needs profile rows for evaluation and replay.
+            if not inside.any():
                 omitted += 1
                 continue
             eligible.append(i)
