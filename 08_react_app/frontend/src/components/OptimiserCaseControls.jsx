@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-// Inline individual case overrides — no dialog wrapper.
+// Individual case controls. Whole-region rules are strict; conflicts are rejected.
 // Used inside a <details> element in PortfolioOptimiser.
 // Props:
 //   cases         — full case array from getCases()
@@ -36,18 +36,19 @@ export default function OptimiserCaseControls({ cases, mandatoryIds = [], exclud
     <div style={{ marginTop: 8 }}>
       <input
         type="search"
+        aria-label="Search individual case controls"
         placeholder="Search cases…"
         value={search}
         onChange={e => setSearch(e.target.value)}
         style={{ marginBottom: 8, width: '100%', maxWidth: 300 }}
       />
       <p className="text-small text-muted" style={{ marginBottom: 6 }}>
-        {shown.length} of {cases.length} cases · individual overrides take precedence over region and group locks above
+        {shown.length} of {cases.length} cases · region rules remain strict
       </p>
       {shown.map(c => (
         <div key={c.id} className="optimiser-tier-row">
           <span>{c.case_name} <small style={{ color: 'var(--color-text-muted)' }}>ID {c.id}</small></span>
-          <select value={getState(c.id)} onChange={e => setState(c.id, e.target.value)}>
+          <select aria-label={`Case control for ${c.case_name} (ID ${c.id})`} value={getState(c.id)} onChange={e => setState(c.id, e.target.value)}>
             <option value="optional">Optimiser chooses</option>
             <option value="mandatory">Must include</option>
             <option value="excluded">Must exclude</option>

@@ -11,12 +11,15 @@
 #
 # Accepted decisions and limits
 # -----------------------------
-# The objective is post-tax NPV. Cases can be included/excluded, with
+# The default objective is post-tax NPV. Cases can be included/excluded, with
 # mandatory/excluded ID lists for user controls. Constraint rows describe
 # Capex or production, total or each-year basis, an inclusive year window,
 # a minimum/maximum target and a flexibility percentage from 0 to 15.
 # Zero flexibility is strict. Zero targets cannot use percentage relaxation.
 # Constraint periods can differ from the objective period.
+# Advanced adds production-share targets with percentage-point tolerances
+# and Region -> Country -> Case rules. Standard submits no portfolio controls. Both modes accept
+# NPV, undiscounted post-tax FCF, pre-tax Underlying RCOP or cumulative production.
 #
 # What the request models check
 # -----------------------------
@@ -52,7 +55,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ..state import app_state
-from scenario_modeller.domain.optimisation import Constraint, OptimisationSpec
+from scenario_modeller.domain.optimisation import Constraint, MixConstraint, RegionRule, CountryRule, CaseRule, OptimisationSpec
 from scenario_modeller.services.optimisation_service import optimise
 
 router = APIRouter(prefix='/api/optimisation', tags=['Optimisation'])
@@ -81,11 +84,39 @@ class ConstraintInput(StrictModel):
             raise ValueError('Constraint start year must not exceed end year')
         if self.target == 0 and self.flexibility_pct:
             raise ValueError('Zero targets must remain strict')
+        if self.case_ids is not None and len(self.case_ids) != len(set(self.case_ids)):
+            raise ValueError('Scoped case IDs must not contain duplicates')
         return self
 
 
+class MixInput(StrictModel):
+    dimension: Literal['group_entity', 'region']
+    value: str = Field(min_length=1)
+    target_share_pct: float = Field(ge=0, le=100)
+    tolerance_pct_points: float = Field(default=5, ge=0, le=100)
+
+
+class RegionInput(StrictModel):
+    region: str = Field(min_length=1)
+    rule: Literal['optional', 'mandatory', 'excluded']
+
+
+class CountryInput(RegionInput):
+    country: str = Field(min_length=1)
+
+
+class CaseInput(StrictModel):
+    case_id: int = Field(strict=True)
+    rule: Literal['optional', 'mandatory', 'excluded']
+
+
 class OptimisationRequest(StrictModel):
-    objective: Literal['post_tax_fcf', 'underlying_rcop', 'production'] = 'post_tax_fcf'
+    objective: Literal['post_tax_npv', 'post_tax_fcf', 'underlying_rcop', 'production'] = 'post_tax_npv'
+    mode: Literal['full', 'mix'] = 'full'
+    mix_constraints: list[MixInput] = Field(default_factory=list, max_length=100)
+    region_rules: list[RegionInput] = Field(default_factory=list, max_length=100)
+    country_rules: list[CountryInput] = Field(default_factory=list, max_length=500)
+    case_rules: list[CaseInput] = Field(default_factory=list, max_length=10000)
     year_from: int = Field(default=2026, ge=2026, le=2040, strict=True)
     year_to: int = Field(default=2040, ge=2026, le=2040, strict=True)
     constraints: list[ConstraintInput] = Field(default_factory=list, max_length=30)
@@ -94,6 +125,9 @@ class OptimisationRequest(StrictModel):
 
     @model_validator(mode='after')
     def valid(self):
+        if self.mode == 'full' and (self.mix_constraints or self.region_rules or self.country_rules or self.case_rules
+                                    or self.mandatory_case_ids or self.excluded_case_ids):
+            raise ValueError('Mix targets and portfolio controls require Advanced mode')
         if self.year_from > self.year_to:
             raise ValueError('Objective start year must not exceed end year')
         if len({c.id for c in self.constraints}) != len(self.constraints):
@@ -129,11 +163,26 @@ class RecommendationCase(StrictModel):
     name: str
     selected: bool
     npv: float
+    objective_contribution: float
     capex: float
     production: float
 
 
+class MixCheck(StrictModel):
+    dimension: Literal['group_entity', 'region']
+    value: str
+    target_share_pct: float
+    min_share_pct: float
+    max_share_pct: float
+    actual_share_pct: float | None
+    satisfied: bool
+
+
 class OptimisationResponse(StrictModel):
+    objective: str
+    objective_label: str
+    objective_unit: str
+    reference_objective_value: float
     status: Status
     selected_case_ids: list[int]
     excluded_case_ids: list[int]
@@ -144,6 +193,7 @@ class OptimisationResponse(StrictModel):
     capex: float | None
     production: float | None
     constraint_checks: list[ConstraintCheck]
+    mix_checks: list[MixCheck]
     cases: list[RecommendationCase]
     diagnostics: list[str]
     reconciled: bool
@@ -155,7 +205,11 @@ def solve(request: OptimisationRequest):
     spec = OptimisationSpec(request.year_from, request.year_to,
         tuple(Constraint(**{**c.model_dump(), 'case_ids': tuple(c.case_ids) if c.case_ids is not None else None}) for c in request.constraints),
         tuple(request.mandatory_case_ids), tuple(request.excluded_case_ids),
-        objective=request.objective)
+        objective=request.objective,
+        mix_constraints=tuple(MixConstraint(**c.model_dump()) for c in request.mix_constraints),
+        region_rules=tuple(RegionRule(**r.model_dump()) for r in request.region_rules),
+        country_rules=tuple(CountryRule(**r.model_dump()) for r in request.country_rules),
+        case_rules=tuple(CaseRule(**r.model_dump()) for r in request.case_rules))
     if not solve_lock.acquire(blocking=False):
         raise HTTPException(409, detail='An optimisation is already running. Try again when it finishes.')
     try:

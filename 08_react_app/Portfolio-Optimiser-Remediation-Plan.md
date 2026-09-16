@@ -1,5 +1,26 @@
 # Portfolio Optimiser Remediation and Improvement Plan
 
+## Current implementation — simplified scope, 16 September 2026
+
+The current user decisions supersede the historical recommendations below.
+
+- **Standard:** objective selection, constraints and targets, then Run. No region, country or individual case controls are displayed or submitted.
+- **Advanced:** Objective → Constraints → Portfolio mix → Controls → Run. Controls are grouped hierarchically by Region → Country → Case.
+- Both modes offer Post-tax NPV, Free Cash Flow, Underlying RCOP and Production. NPV uses the shared 8% fixed-2026 valuation service. FCF sums post-tax cash flow without discounting; Underlying RCOP sums the before-tax source metric without discounting; production sums annual rates with the existing 0.36525 conversion to mmboe. NPV remains the default.
+- Result metadata, table headings, units and saved scenario rationale follow the chosen objective. `objective_contribution` and `reference_objective_value` are objective-neutral. Legacy `npv` and `reference_npv` always contain discounted NPV.
+- Region controls set the broad rule. Country rules override their region; individual case rules override both. Country identity is scoped by region. Unspecified rules inherit; explicit `optional` means the optimiser chooses, clearing an inherited requirement or exclusion. Changing a parent preserves more-specific overrides. The UI shows effective counts.
+- These effective controls remain strict during flexibility attempts. The backend resolves hierarchy against authoritative case metadata and rejects unknown or duplicate controls. Standard requests reject Advanced rules, preventing hidden controls from affecting a Standard solve.
+- Advanced production-share targets start from reference proportions over the chosen objective period. Slider edits redistribute other shares to keep 100%. Each dimension has an editable tolerance, initially ±5 percentage points; share bands never relax with budget flexibility.
+- When every case in a region is effectively excluded, its regional target is redistributed. A country/case override reopening that region restores its reference target and redistributes the remaining shares. Oil/Gas targets stay unchanged. Changing the period refreshes reference shares and resets targets for that period. Mode switches retain drafts but submit only controls belonging to the active mode.
+- Share constraints require positive selected production. Zero reference production is rejected. Capex uses signed net expenditure for budgets and is not a share denominator.
+- Solver recommendations are independently checked and replayed through the ordinary scenario service. Hand-off creates an unsaved normal scenario definition, preserves exclusions, and records objectives, limits and hierarchy rules in rationale.
+
+Validation: 203 Python/API tests and 91 frontend tests passed; production build passed with the existing bundle-size warning. Tests include distinct correct optima for all four objectives, both API modes, independent brute-force mix checks, hierarchical overrides and inheritance, duplicate/unknown controls, Standard isolation and scenario hand-off. Browser verification covers the Advanced section order, objective-labelled results, included region → excluded country → re-included case, and switching to Standard ignoring retained controls. The new controls fit a 390px mobile viewport without horizontal overflow; the earlier two-mode pass also verified Save and run through to Scenario Results. Automated checks do not constitute business validation.
+
+Tied optima may select different cases; no secondary tie-breaking business objective is imposed. Exact-ID fixtures use unique optima.
+
+## Historical review
+
 ## Purpose
 
 This document records a code review of the `feature/with-optimiser` branch and defines a recommended implementation sequence for strengthening the optimiser before it is treated as analytically dependable or considered for merging into the published application.

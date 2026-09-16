@@ -1,8 +1,12 @@
 # Portfolio Optimiser — Claude Code / Codex Implementation Brief
 
+## Current scope — 16 September 2026
+
+The optimiser has two modes: **Standard** (objective, constraints and targets) and **Advanced** (objective, constraints, production mix, then hierarchical Region → Country → Case controls). Both offer Post-tax NPV, undiscounted post-tax Free Cash Flow, before-tax Underlying RCOP and cumulative Production. More-specific controls override their parents, and explicit “Optimiser chooses” clears an inherited restriction. Standard submits no portfolio controls. The [remediation plan's current implementation section](Portfolio-Optimiser-Remediation-Plan.md#current-implementation--simplified-scope-16-september-2026) records the governing decisions and checks. The original agreement and subsequent examples below are historical design material, superseded by this current scope.
+
 ## Agreed first implementation
 
-The following decisions supersede conflicting recommendations later in this original brief:
+The following records the first implementation agreement; the current scope above takes precedence:
 
 - Include/exclude reference cases only; all loaded cases are concurrent candidates. No mutually exclusive groups, delay/acceleration choices, or ownership optimisation in this version.
 - Maximise post-tax NPV using the existing 8% fixed-2026 basis. Objective period is independently selectable. Optional weighted objectives remain a follow-on feature.
@@ -347,7 +351,7 @@ Do not overload V1 with every conceivable constraint.
 
 The analytical data uses source financial signs. Cash outflows may be stored as negative values.
 
-A capital budget constraint must operate on **positive resource consumption**, not naively on a negative analytical Cash Capex sum.
+A capital budget uses **signed net expenditure**, calculated as the negative of analytical Cash Capex. Negative analytical outflows consume budget; positive analytical credits reduce net expenditure. Never apply absolute values or clip credits.
 
 For example, if analytical Cash Capex is:
 
@@ -963,8 +967,8 @@ At minimum:
 10. **Capex sign conversion**
     - prove negative analytical Cash Capex becomes positive budget consumption correctly.
 
-11. **Deterministic repeatability**
-    - identical input returns identical selected-case set and metrics.
+11. **Repeatability and ties**
+    - identical input produces the same optimal objective value and satisfies the same constraints; exact selected IDs are asserted only when the optimum is unique. No secondary tie-breaking objective is currently imposed.
 
 12. **Metric reconciliation**
     - reported output totals equal sums of selected coefficients.

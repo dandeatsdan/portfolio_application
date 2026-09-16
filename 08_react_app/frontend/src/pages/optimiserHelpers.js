@@ -1,17 +1,17 @@
-export const YEARS = Array.from({ length: 15 }, (_, i) => 2026 + i)
+import { defaultCase } from '../hooks/scenarioInstructions.js'
 
+export const YEARS = Array.from({ length: 15 }, (_, i) => 2026 + i)
+export const OBJECTIVES = [
+  { key: 'post_tax_npv', label: 'Post-tax NPV', description: 'Maximise post-tax cash flow discounted at 8%, using the fixed 2026 basis.', unit: '$m' },
+  { key: 'post_tax_fcf', label: 'Free Cash Flow', description: 'Maximise the undiscounted sum of post-tax free cash flow.', unit: '$m' },
+  { key: 'underlying_rcop', label: 'Underlying RCOP', description: 'Maximise the undiscounted sum of Underlying RCOP, before tax.', unit: '$m' },
+  { key: 'production', label: 'Production', description: 'Maximise cumulative production over the selected years, in mmboe.', unit: 'mmboe' },
+]
 export const DEFAULT_OPTIMISER = {
-  year_from: 2026,
-  year_to: 2040,
-  constraints: [],
-  mandatory_case_ids: [],
-  excluded_case_ids: [],
-  objective: 'post_tax_fcf',  // 'post_tax_fcf' | 'underlying_rcop' | 'production'
-  mode: 'full',               // 'full' | 'guided' | 'balanced'
-  group_entity_mix: { enabled: false, metric: 'production', sliders: {} },
-  region_mix:       { enabled: false, metric: 'production', sliders: {} },
-  region_locks:       {},  // { [regionValue]: 'optional' | 'mandatory' | 'excluded' }
-  group_entity_locks: {},  // { [groupEntityValue]: 'optional' | 'mandatory' | 'excluded' }
+  year_from: 2026, year_to: 2040, objective: 'post_tax_npv', mode: 'full',
+  constraints: [], region_rules: {}, country_rules: {}, case_rules: {},
+  group_entity_mix: { enabled: true, tolerance: 5, sliders: {} },
+  region_mix: { enabled: true, tolerance: 5, sliders: {} },
 }
 
 export function newConstraint(id) {
@@ -19,180 +19,167 @@ export function newConstraint(id) {
 }
 
 export function constraintUnit(c) {
-  if (c.metric === 'capex') return '$m'
-  return c.basis === 'total' ? 'mmboe' : 'mboed'
+  return c.metric === 'capex' ? '$m' : c.basis === 'total' ? 'mmboe' : 'mboed'
 }
 
-// Build reference totals { production: { group_entity: {Gas: N, ...}, region: {R: N, ...} }, capex: {...} }
-// prodRows / capexRows are arrays of { id, value } from getReferenceMeasure
-export function buildReferenceTotals(cases, prodRows, capexRows) {
-  const byId = id => cases.find(c => c.id === id)
-  const group = (rows, dimField) => {
+export const dimensionValue = value => value || 'Unknown'
+export const countryRuleKey = (region, country) => JSON.stringify([dimensionValue(region), dimensionValue(country)])
+export const CONTROL_LABELS = { optional: 'Optimiser chooses', mandatory: 'Included', excluded: 'Excluded' }
+
+export function effectiveCaseRule(draft, c) {
+  return draft.case_rules?.[c.id] ?? draft.country_rules?.[countryRuleKey(c.region, c.country)] ??
+    draft.region_rules?.[dimensionValue(c.region)] ?? 'optional'
+}
+
+export function excludedRegionRules(draft, cases) {
+  const regions = [...new Set(cases.map(c => dimensionValue(c.region)))]
+  return Object.fromEntries(regions.filter(region => cases.filter(c => dimensionValue(c.region) === region)
+    .every(c => effectiveCaseRule(draft, c) === 'excluded')).map(region => [region, 'excluded']))
+}
+
+export function changeControlRules(draft, cases, update, referenceShares = {}) {
+  const next = { ...draft, ...update }
+  const before = excludedRegionRules(draft, cases), after = excludedRegionRules(next, cases)
+  let shares = draft.region_mix.sliders
+  for (const region of Object.keys(before)) {
+    if (!after[region] && Object.hasOwn(shares, region)) {
+      shares = changeMixShare(shares, region, referenceShares[region] ?? 0, Object.keys(after))
+    }
+  }
+  return { ...update, region_mix: { ...draft.region_mix, sliders: excludeRegionShares(shares, after) } }
+}
+export const mixTotal = sliders => Object.values(sliders).reduce((sum, v) => sum + Number(v), 0)
+
+// Round to hundredths without changing the 100% total.
+function allocate(weights, total = 100) {
+  const entries = Object.entries(weights)
+  if (!entries.length) return {}
+  const sum = mixTotal(weights)
+  const units = Math.round(total * 100)
+  const rows = entries.map(([key, value]) => {
+    const exact = units * (sum > 0 ? value / sum : 1 / entries.length)
+    return { key, units: Math.floor(exact), remainder: exact - Math.floor(exact) }
+  })
+  let remaining = units - rows.reduce((n, r) => n + r.units, 0)
+  const ranked = [...rows].sort((a, b) => b.remainder - a.remainder)
+  for (const row of ranked) { if (remaining-- > 0) row.units++ }
+  return Object.fromEntries(rows.map(r => [r.key, r.units / 100]))
+}
+
+export function referenceMix(cases, rows) {
+  const values = new Map(rows.map(r => [r.id, r.value]))
+  const result = {}
+  for (const dimension of ['group_entity', 'region']) {
     const totals = {}
-    for (const { id, value } of rows) {
-      const c = byId(id)
-      if (!c) continue
-      const dim = c[dimField] || 'Unknown'
-      totals[dim] = (totals[dim] || 0) + (value || 0)
+    for (const c of cases) {
+      const value = values.get(c.id)
+      if (!Number.isFinite(value) || value < 0) throw new Error('Reference production is missing or invalid for a case.')
+      const key = dimensionValue(c[dimension])
+      totals[key] = (totals[key] || 0) + value
     }
-    return totals
+    if (mixTotal(totals) <= 0) throw new Error('Advanced needs positive production in the selected period.')
+    result[dimension] = allocate(totals)
   }
-  return {
-    production: { group_entity: group(prodRows, 'group_entity'), region: group(prodRows, 'region') },
-    capex:      { group_entity: group(capexRows, 'group_entity'), region: group(capexRows, 'region') },
-  }
+  return result
 }
 
-// Initialise sliders for a given dimension from distinct values in cases
-export function initSliders(cases, dimField) {
-  const values = [...new Set(cases.map(c => c[dimField]).filter(Boolean))]
-  return Object.fromEntries(values.map(v => [v, 0]))
+export function excludeRegionShares(sliders, rules) {
+  const available = Object.fromEntries(Object.entries(sliders).filter(([key]) => rules[key] !== 'excluded'))
+  const adjusted = allocate(available)
+  return Object.fromEntries(Object.keys(sliders).map(key => [key, adjusted[key] ?? 0]))
 }
 
-// Pre-populate sliders from reference proportions, forcing sum = 100
-export function prePopulateBalancedMix(cases, referenceTotals) {
-  const populate = (dimField, metric) => {
-    const totalsMap = referenceTotals[metric][dimField]
-    const grandTotal = Object.values(totalsMap).reduce((a, b) => a + b, 0)
-    const values = [...new Set(cases.map(c => c[dimField]).filter(Boolean))]
-    const raw = values.map(v => ({ v, pct: grandTotal > 0 ? Math.round(((totalsMap[v] || 0) / grandTotal) * 100) : 0 }))
-    // Adjust largest to force sum to exactly 100
-    const sum = raw.reduce((a, b) => a + b.pct, 0)
-    const delta = 100 - sum
-    if (delta !== 0 && raw.length > 0) {
-      const largest = raw.reduce((a, b) => b.pct > a.pct ? b : a)
-      largest.pct = largest.pct + delta
-    }
-    return Object.fromEntries(raw.map(({ v, pct }) => [v, pct]))
-  }
-  return {
-    group_entity_mix: { enabled: true, metric: 'production', sliders: populate('group_entity', 'production') },
-    region_mix:       { enabled: true, metric: 'production', sliders: populate('region', 'production') },
-  }
-}
-
-export function mixTotal(sliders) {
-  return Object.values(sliders).reduce((a, b) => a + Number(b), 0)
+export function changeMixShare(sliders, key, value, excluded = []) {
+  const locked = new Set(excluded)
+  const others = Object.fromEntries(Object.entries(sliders).filter(([k]) => k !== key && !locked.has(k)))
+  const target = Object.keys(others).length ? Math.min(100, Math.max(0, Number(value))) : 100
+  const adjusted = allocate(others, 100 - target)
+  return Object.fromEntries(Object.keys(sliders).map(k => [k, locked.has(k) ? 0 : k === key ? target : adjusted[k]]))
 }
 
 export function runGateBlocked(draft) {
-  if (draft.group_entity_mix.enabled && Math.round(mixTotal(draft.group_entity_mix.sliders)) !== 100) return true
-  if (draft.region_mix.enabled && Math.round(mixTotal(draft.region_mix.sliders)) !== 100) return true
-  return false
+  if (draft.mode !== 'mix') return false
+  return [draft.group_entity_mix, draft.region_mix].some(s => s.enabled && (
+    !Object.keys(s.sliders).length || Math.abs(mixTotal(s.sliders) - 100) > 1e-6 ||
+    Object.values(s.sliders).some(v => !Number.isFinite(Number(v)) || v < 0 || v > 100) ||
+    s.tolerance === '' || !Number.isFinite(Number(s.tolerance)) || s.tolerance < 0 || s.tolerance > 100
+  ))
 }
 
-// Expand mix sections into absolute Constraint objects with case_ids
-function expandMixConstraints(draft, cases, referenceTotals) {
-  if (!referenceTotals) return []
-  const derived = []
-  const sections = [
-    ['group_entity', draft.group_entity_mix],
-    ['region', draft.region_mix],
-  ]
-  for (const [dimField, section] of sections) {
-    if (!section.enabled) continue
-    const metric = section.metric
-    const refByDim = referenceTotals[metric][dimField] || {}
-    for (const [dimValue, pct] of Object.entries(section.sliders)) {
-      const refTotal = refByDim[dimValue] || 0
-      const absoluteTarget = (Number(pct) / 100) * Math.abs(refTotal)
-      const filteredIds = cases.filter(c => c[dimField] === dimValue).map(c => c.id)
-      derived.push({
-        id: `mix_${dimField}_${dimValue.replace(/\W+/g, '_')}`,
-        metric,
-        basis: 'total',
-        year_from: Number(draft.year_from),
-        year_to: Number(draft.year_to),
-        operator: 'min',
-        target: absoluteTarget,
-        flexibility_pct: 0,
-        case_ids: filteredIds,
-      })
+function validPeriod(from, to) {
+  return YEARS.includes(Number(from)) && YEARS.includes(Number(to)) && Number(from) <= Number(to)
+}
+
+export function optimiserRequest(draft) {
+  if (!OBJECTIVES.some(o => o.key === draft.objective)) throw new Error('Choose a supported objective.')
+  if (!validPeriod(draft.year_from, draft.year_to)) throw new Error('Choose an ordered period within 2026–2040.')
+  if (runGateBlocked(draft)) throw new Error('Mix targets must total 100%, with a tolerance between 0 and 100 percentage points.')
+  const constraints = draft.constraints.map(c => {
+    const target = Number(c.target), flexibility = Number(c.flexibility_pct)
+    if (String(c.target).trim() === '' || !Number.isFinite(target) || target < 0 || target > 1e12 ||
+        !validPeriod(c.year_from, c.year_to) || !Number.isInteger(flexibility) || flexibility < 0 || flexibility > 15 ||
+        (target === 0 && flexibility > 0)) throw new Error('Check constraint targets, periods and flexibility. Zero targets must stay strict.')
+    return { ...c, target, flexibility_pct: flexibility, year_from: Number(c.year_from), year_to: Number(c.year_to) }
+  })
+  const mixConstraints = []
+  if (draft.mode === 'mix') {
+    for (const dimension of ['group_entity', 'region']) {
+      const section = draft[`${dimension}_mix`]
+      if (section.enabled) for (const [value, target] of Object.entries(section.sliders)) {
+        mixConstraints.push({ dimension, value, target_share_pct: Number(target), tolerance_pct_points: Number(section.tolerance) })
+      }
     }
   }
-  return derived
-}
-
-// Expand group/region locks to { mandatory: [ids], excluded: [ids] }
-function expandGroupLocks(locks, cases, dimField) {
-  const mandatory = [], excluded = []
-  for (const [dimValue, state] of Object.entries(locks)) {
-    const ids = cases.filter(c => c[dimField] === dimValue).map(c => c.id)
-    if (state === 'mandatory') mandatory.push(...ids)
-    else if (state === 'excluded') excluded.push(...ids)
-  }
-  return { mandatory, excluded }
-}
-
-export function optimiserRequest(draft, cases = [], referenceTotals = null) {
-  if (Number(draft.year_from) > Number(draft.year_to)) throw new Error('Start year must not exceed end year')
-
-  // Expand mix constraints
-  const mixConstraints = expandMixConstraints(draft, cases, referenceTotals)
-
-  // Expand region and group entity locks
-  const regionExpanded = expandGroupLocks(draft.region_locks || {}, cases, 'region')
-  const entityExpanded = expandGroupLocks(draft.group_entity_locks || {}, cases, 'group_entity')
-
-  // Merge: start from lock-expanded IDs, then let individual overrides win
-  const lockMandatory = new Set([...regionExpanded.mandatory, ...entityExpanded.mandatory])
-  const lockExcluded  = new Set([...regionExpanded.excluded,  ...entityExpanded.excluded])
-
-  // Individual overrides win over group locks
-  for (const id of draft.mandatory_case_ids) { lockMandatory.add(id); lockExcluded.delete(id) }
-  for (const id of draft.excluded_case_ids)  { lockExcluded.add(id);  lockMandatory.delete(id) }
-
-  const mandatoryIds = [...lockMandatory]
-  const excludedIds  = [...lockExcluded]
-
-  // Validate no conflict remains
-  const conflict = mandatoryIds.filter(id => excludedIds.includes(id))
-  if (conflict.length) {
-    const names = conflict.map(id => { const c = cases.find(x => x.id === id); return c ? c.case_name : `ID ${id}` })
-    throw new Error(`Conflicting controls — the following cases are both required and excluded: ${names.join(', ')}. Resolve in case controls.`)
-  }
-
-  const allConstraints = [
-    ...draft.constraints.map(c => ({ ...c, target: Number(c.target) })),
-    ...mixConstraints,
-  ]
-
   return {
-    objective: draft.objective || 'post_tax_fcf',
-    year_from: Number(draft.year_from),
-    year_to:   Number(draft.year_to),
-    constraints: allConstraints,
-    mandatory_case_ids: mandatoryIds,
-    excluded_case_ids:  excludedIds,
+    objective: draft.objective, mode: draft.mode,
+    year_from: Number(draft.year_from), year_to: Number(draft.year_to), constraints,
+    mandatory_case_ids: [], excluded_case_ids: [],
+    mix_constraints: mixConstraints,
+    region_rules: draft.mode === 'mix'
+      ? Object.entries(draft.region_rules).filter(([, rule]) => rule !== 'optional').map(([region, rule]) => ({ region, rule })) : [],
+    country_rules: draft.mode === 'mix' ? Object.entries(draft.country_rules ?? {}).map(([key, rule]) => {
+      const [region, country] = JSON.parse(key)
+      return { region, country, rule }
+    }) : [],
+    case_rules: draft.mode === 'mix' ? Object.entries(draft.case_rules ?? {}).map(([case_id, rule]) => ({ case_id: Number(case_id), rule })) : [],
   }
-}
-
-const OBJECTIVE_LABELS = {
-  post_tax_fcf:    'Free Cash Flow maximisation',
-  underlying_rcop: 'Underlying RCOP maximisation',
-  production:      'Production maximisation',
 }
 
 export function recommendationDefinition(result, request) {
-  if (!result?.selected_case_ids?.length) throw new Error('No cases were recommended')
-  const selectedSet = new Set(result.selected_case_ids)
-  const excluded = result.cases.filter(c => !selectedSet.has(c.id))
-  const objLabel = OBJECTIVE_LABELS[request.objective] || 'Post-tax FCF maximisation'
+  if (result?.status !== 'optimal' || !result.reconciled || !result.selected_case_ids?.length) {
+    throw new Error('Only a verified, nonempty recommendation can become a scenario.')
+  }
+  const excluded = result.excluded_case_ids
+  if (!Array.isArray(excluded)) throw new Error('Recommendation exclusions are missing.')
+  const objective = OBJECTIVES.find(o => o.key === request.objective)
+  if (!objective) throw new Error('Recommendation objective is unsupported.')
+  const rationale = [
+    `Portfolio optimiser: ${request.mode === 'mix' ? 'Advanced' : 'Standard'}.`,
+    `${objective.label}: ${objective.description} Period ${request.year_from}–${request.year_to}.`,
+    `Verified through the scenario engine. Flexibility step: ${result.relaxation_pct}%.`,
+    ...(request.constraints ?? []).map(c => `${c.metric} ${c.operator} ${c.target} ${constraintUnit(c)}, ${c.year_from}–${c.year_to}, ${c.basis}; flexibility ${c.flexibility_pct}%.`),
+    ...(result.constraint_checks ?? []).map(c => `Limit ${c.id} (${c.year_from}–${c.year_to}): adjusted ${c.adjusted_target}, actual ${c.actual} ${c.unit}.`),
+    ...(request.mix_constraints ?? []).map(c => `${c.dimension}: ${c.value}, production target ${c.target_share_pct}% ±${c.tolerance_pct_points} percentage points.`),
+    'Control precedence: case overrides country, country overrides region. Unspecified controls inherit.',
+    ...(request.region_rules ?? []).map(r => `Region ${r.region}: ${CONTROL_LABELS[r.rule]} by default.`),
+    ...(request.country_rules ?? []).map(r => `Country ${r.country} (${r.region}): ${CONTROL_LABELS[r.rule]}.`),
+    ...(request.case_rules ?? []).map(r => `Case ${r.case_id}: ${CONTROL_LABELS[r.rule]}.`),
+    `Required cases: ${(request.mandatory_case_ids ?? []).join(', ') || 'none'}. Excluded cases: ${(request.excluded_case_ids ?? []).join(', ') || 'none'}.`,
+  ].join('\n')
   return {
-    scenarioName: 'Optimiser Recommendation',
-    scenarioDescription: `${objLabel} · ${request.year_from}–${request.year_to} · ${result.selected_case_ids.length} cases selected`,
-    excludedCaseIds: excluded.map(c => c.id),
+    schema_version: 1, name: 'Optimiser Recommendation',
+    description: `${objective.label} maximisation · ${request.year_from}–${request.year_to} · ${result.selected_case_ids.length} cases selected`,
+    rationale, shortlisted_case_ids: [...excluded],
+    case_configurations: Object.fromEntries(excluded.map(id => [id, { ...defaultCase(), include: false }])),
   }
 }
 
 export function sortRecommendedCases(cases, sort) {
-  if (!cases.length) return cases
-  const sorted = [...cases].sort((a, b) => {
+  return [...cases].sort((a, b) => {
     if (a.selected !== b.selected) return a.selected ? -1 : 1
     if (!sort) return 0
     const av = a[sort.key], bv = b[sort.key]
-    if (typeof av === 'string') return sort.direction === 'ascending' ? av.localeCompare(bv) : bv.localeCompare(av)
-    return sort.direction === 'ascending' ? av - bv : bv - av
+    const comparison = typeof av === 'string' ? av.localeCompare(bv) : av - bv
+    return sort.direction === 'ascending' ? comparison : -comparison
   })
-  return sorted
 }

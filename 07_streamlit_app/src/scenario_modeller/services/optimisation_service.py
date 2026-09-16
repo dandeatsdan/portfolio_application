@@ -256,27 +256,130 @@
 # solve_attempt -> adjusted_target -> constraint_checks.
 # ============================================================
 
-"""Binary reference-case selection. Financialisation stays in existing services."""
+"""Binary reference-case selection with optional production-share bands.
+
+Both UI modes allow the same selectable objective. NPV uses fixed-origin
+discounting; FCF and Underlying RCOP use undiscounted sums, and production
+uses cumulative mmboe. Region -> Country -> Case rules are resolved against
+authoritative metadata with more-specific choices winning; share constraints use the selected objective window,
+remain strict during financial-limit relaxation, and require positive production.
+Financialisation stays in existing services.
+"""
 from time import monotonic
+from dataclasses import replace
 import math
 import numpy as np
 import pandas as pd
 import pulp
 import highspy
-from scenario_modeller.domain.optimisation import OptimisationSpec, OBJECTIVE_METRICS
+from scenario_modeller.domain.optimisation import OptimisationSpec, OBJECTIVES
 from scenario_modeller.services.valuation_service import npv_by_case
 from scenario_modeller.services.scenario_service import execute_scenario
 
 METRICS = {'capex': 'Cash Capex', 'production': 'Total Production (mboed)'}
+MIX_DIMENSIONS = {'group_entity': 'Group Entity', 'region': 'Region'}
 
 
-def sum_by_case(data, metric_key, year_from, year_to, ids):
-    """Undiscounted sum of metric_key for each case over the year window."""
-    selected = data.loc[(data.Metric == metric_key) & data.Year.between(year_from, year_to) & data.ID.isin(ids)]
-    summed = selected.groupby('ID').Value.sum()
-    is_production = metric_key == 'Total Production (mboed)'
-    factor = 0.36525 if is_production else 1.0
-    return {i: float(summed.get(i, 0)) * factor for i in ids}
+def dimension_values(cases, dimension):
+    column = MIX_DIMENSIONS.get(dimension)
+    if column not in cases:
+        raise ValueError(f'Missing or unsupported mix dimension: {dimension}')
+    return cases.set_index('ID')[column].fillna('').replace('', 'Unknown')
+
+
+def resolve_case_controls(cases, spec):
+    """Apply region -> country -> case rules; explicit optional clears inheritance."""
+    states = {int(i): 'optional' for i in cases.ID}
+    allowed = {'optional', 'mandatory', 'excluded'}
+    regions = dimension_values(cases, 'region') if spec.region_rules or spec.country_rules else None
+    seen = set()
+    for rule in spec.region_rules:
+        if rule.region in seen or rule.region not in set(regions):
+            raise ValueError('Unknown or duplicate region rule')
+        seen.add(rule.region)
+        if rule.rule not in allowed:
+            raise ValueError('Unsupported region rule')
+        for i in regions.index[regions == rule.region]:
+            states[int(i)] = rule.rule
+    seen = set()
+    if spec.country_rules:
+        if 'Country' not in cases:
+            raise ValueError('Missing country metadata')
+        countries = cases.set_index('ID').Country.fillna('').replace('', 'Unknown')
+        for rule in spec.country_rules:
+            key = (rule.region, rule.country)
+            members = countries.index[(regions == rule.region) & (countries == rule.country)]
+            if key in seen or len(members) == 0:
+                raise ValueError('Unknown or duplicate country rule within region')
+            seen.add(key)
+            if rule.rule not in allowed:
+                raise ValueError('Unsupported country rule')
+            for i in members:
+                states[int(i)] = rule.rule
+    if set(spec.mandatory_case_ids) & set(spec.excluded_case_ids):
+        raise ValueError('A case cannot be both mandatory and excluded')
+    seen = set()
+    # Preserve the legacy explicit case lists as case-level overrides.
+    explicit = [(i, 'mandatory') for i in spec.mandatory_case_ids] + [(i, 'excluded') for i in spec.excluded_case_ids]
+    explicit += [(r.case_id, r.rule) for r in spec.case_rules]
+    for i, rule in explicit:
+        if i not in states or i in seen:
+            raise ValueError('Unknown or duplicate individual case rule')
+        seen.add(i)
+        if rule not in allowed:
+            raise ValueError('Unsupported case rule')
+        states[i] = rule
+    return replace(spec, mandatory_case_ids=tuple(sorted(i for i, state in states.items() if state == 'mandatory')),
+                   excluded_case_ids=tuple(sorted(i for i, state in states.items() if state == 'excluded')))
+
+
+def prepare_mix_limits(cases, production, spec):
+    """Production shares use the objective window and a strictly positive denominator.
+
+    Requiring one positive-production case avoids choosing an arbitrary positive
+    epsilon. Net Capex is deliberately not a share basis. Share bands never relax.
+    """
+    if not spec.mix_constraints:
+        return []
+    if not any(v > 0 for v in production.values()):
+        raise ValueError('Portfolio mix requires positive reference production in the selected period')
+    rules = {}
+    for c in spec.mix_constraints:
+        if not all(math.isfinite(v) and 0 <= v <= 100 for v in (c.target_share_pct, c.tolerance_pct_points)):
+            raise ValueError('Mix targets and tolerances must be finite percentages from 0 to 100')
+        group = rules.setdefault(c.dimension, {})
+        if c.value in group:
+            raise ValueError('Duplicate mix target')
+        group[c.value] = c
+    limits = []
+    for dimension, targets in rules.items():
+        groups = dimension_values(cases, dimension)
+        if set(targets) != set(groups):
+            raise ValueError('Mix targets must cover every category of the selected dimension')
+        if not math.isclose(sum(c.target_share_pct for c in targets.values()), 100, abs_tol=1e-6):
+            raise ValueError('Mix targets must sum to 100% for each dimension')
+        for value, c in targets.items():
+            for operator, share in [('min', max(0, c.target_share_pct - c.tolerance_pct_points)),
+                                    ('max', min(100, c.target_share_pct + c.tolerance_pct_points))]:
+                limits.append({'coefficients': {i: v * ((1 if groups[i] == value else 0) - share / 100)
+                                                for i, v in production.items()},
+                               'operator': operator, 'target': 0, 'flexibility_pct': 0})
+    limits.append({'coefficients': {i: int(v > 0) for i, v in production.items()},
+                   'operator': 'min', 'target': 1, 'flexibility_pct': 0})
+    return limits
+
+
+def mix_checks(cases, production, selected, spec):
+    total = sum(production[i] for i in selected)
+    output = []
+    for c in spec.mix_constraints:
+        groups = dimension_values(cases, c.dimension)
+        actual = 100 * sum(production[i] for i in selected if groups[i] == c.value) / total if total > 0 else None
+        low, high = max(0, c.target_share_pct - c.tolerance_pct_points), min(100, c.target_share_pct + c.tolerance_pct_points)
+        output.append({'dimension': c.dimension, 'value': c.value, 'target_share_pct': c.target_share_pct,
+                       'min_share_pct': low, 'max_share_pct': high, 'actual_share_pct': actual,
+                       'satisfied': actual is not None and low - 1e-6 <= actual <= high + 1e-6})
+    return output
 
 
 def prepare_coefficients(profiles, cases, spec):
@@ -291,18 +394,25 @@ def prepare_coefficients(profiles, cases, spec):
     if data.duplicated(['ID', 'Metric', 'Year']).any() or not np.isfinite(data.Value).all():
         raise ValueError('Duplicate or non-finite analytical profiles')
     # Missing annual rows within a present metric are zero, as in existing reports.
-    required_metrics = {*METRICS.values(), 'Post-Tax Cash Flow', 'Post-Tax RCOP', 'Total Production (mboed)'}
+    if spec.objective not in OBJECTIVES:
+        raise ValueError('Unsupported optimisation objective')
+    objective_metric = OBJECTIVES[spec.objective][2]
+    required_metrics = {*METRICS.values(), 'Post-Tax Cash Flow', objective_metric}
     for metric in required_metrics:
         missing = set(ids) - set(data.loc[data.Metric == metric, 'ID'])
         if missing:
             raise ValueError(f'Missing {metric} profiles for cases {sorted(missing)}')
-    obj_metric = OBJECTIVE_METRICS.get(spec.objective, 'Post-Tax Cash Flow')
-    if spec.objective == 'post_tax_fcf':
-        npvs = npv_by_case(data, 8, spec.year_from, spec.year_to).set_index('ID').NPV
-        objective = {i: float(npvs.get(i, 0)) for i in ids}
+    npvs = npv_by_case(data, 8, spec.year_from, spec.year_to).set_index('ID').NPV
+    npv_values = {i: float(npvs.get(i, 0)) for i in ids}
+    if spec.objective == 'post_tax_npv':
+        objective = npv_values.copy()
     else:
-        raw = sum_by_case(data, obj_metric, spec.year_from, spec.year_to, ids)
-        objective = {i: float(raw.get(i, 0)) for i in ids}
+        rows = data.loc[(data.Metric == objective_metric) & data.Year.between(spec.year_from, spec.year_to)]
+        totals = rows.groupby('ID').Value.sum()
+        factor = .36525 if spec.objective == 'production' else 1
+        objective = {i: float(totals.get(i, 0)) * factor for i in ids}
+    if not all(math.isfinite(v) for v in [*objective.values(), *npv_values.values()]):
+        raise ValueError('Objective and NPV values must be finite')
 
     def values(metric, start, end, cumulative, scoped_ids=None):
         scope = scoped_ids if scoped_ids is not None else ids
@@ -322,6 +432,8 @@ def prepare_coefficients(profiles, cases, spec):
     limits = []
     for constraint in spec.constraints:
         scoped = [int(i) for i in constraint.case_ids] if constraint.case_ids is not None else None
+        if scoped is not None and (len(scoped) != len(set(scoped)) or not set(scoped).issubset(ids)):
+            raise ValueError('Unknown or duplicate scoped case IDs')
         periods = [(constraint.year_from, constraint.year_to)] if constraint.basis == 'total' else [(y, y) for y in range(constraint.year_from, constraint.year_to + 1)]
         for start, end in periods:
             limits.append({'id': constraint.id, 'metric': constraint.metric, 'basis': constraint.basis,
@@ -330,6 +442,7 @@ def prepare_coefficients(profiles, cases, spec):
                 'unit': '$m' if constraint.metric == 'capex' else 'mmboe' if constraint.basis == 'total' else 'mboed',
                 'coefficients': values(constraint.metric, start, end, constraint.basis == 'total', scoped)})
     headline = {metric: values(metric, spec.year_from, spec.year_to, True) for metric in METRICS}
+    headline['npv'] = npv_values
     return ids, objective, limits, headline
 
 
@@ -388,11 +501,15 @@ def constraint_checks(limits, selected, step):
 
 def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, time_limit=30):
     started = monotonic()
+    spec = resolve_case_controls(cases, spec)
     ids, objective, limits, headline = prepare_coefficients(profiles, cases, spec)
+    mix_limits = prepare_mix_limits(cases, headline['production'], spec)
     attempts = []
     result = {'status': 'infeasible', 'selected_case_ids': [], 'excluded_case_ids': [], 'attempts': attempts,
-        'relaxation_pct': 0, 'objective_value': None, 'reference_npv': sum(objective.values()),
-        'capex': None, 'production': None, 'constraint_checks': [], 'cases': [], 'diagnostics': [],
+        'relaxation_pct': 0, 'objective_value': None, 'reference_npv': sum(headline['npv'].values()),
+        'objective': spec.objective, 'objective_label': OBJECTIVES[spec.objective][0],
+        'objective_unit': OBJECTIVES[spec.objective][1], 'reference_objective_value': sum(objective.values()),
+        'capex': None, 'production': None, 'constraint_checks': [], 'mix_checks': [], 'cases': [], 'diagnostics': [],
         'reconciled': False, 'solve_time_ms': 0}
     max_step = max((c.flexibility_pct for c in spec.constraints), default=0)
     for step in range(max_step + 1):
@@ -400,7 +517,7 @@ def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, t
         if remaining <= 0:
             result['status'] = 'time_limit'
             break
-        status, selected = solve_attempt(ids, objective, limits, spec, step, remaining)
+        status, selected = solve_attempt(ids, objective, limits + mix_limits, spec, step, remaining)
         attempts.append({'relaxation_pct': step, 'status': status})
         result['status'] = status
         if status == 'infeasible':
@@ -408,7 +525,8 @@ def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, t
         if status != 'optimal':
             break  # Never relax after an inconclusive solve.
         checks = constraint_checks(limits, selected, step)
-        if not all(c['satisfied'] for c in checks) or not set(spec.mandatory_case_ids).issubset(selected) or set(spec.excluded_case_ids) & set(selected):
+        shares = mix_checks(cases, headline['production'], selected, spec)
+        if not all(c['satisfied'] for c in checks + shares) or not set(spec.mandatory_case_ids).issubset(selected) or set(spec.excluded_case_ids) & set(selected):
             raise ValueError('Solver recommendation failed independent constraint checks')
         if selected:
             names = cases.set_index('ID').Case
@@ -417,26 +535,30 @@ def optimise(profiles, raw_profiles, cases, tax_rates, spec: OptimisationSpec, t
             run = execute_scenario(raw_profiles, instructions, cases, tax_rates)
             if not run.valid:
                 raise ValueError('Recommended selection failed scenario execution')
-            _, replay_npv, replay_limits, replay_headline = prepare_coefficients(run.results, cases.loc[cases.ID.isin(selected)],
-                OptimisationSpec(spec.year_from, spec.year_to, spec.constraints, objective=spec.objective))
-            if any(not math.isclose(objective[i], replay_npv[i], rel_tol=1e-8, abs_tol=1e-6) for i in selected):
-                raise ValueError('Recommendation NPV does not reconcile with the scenario engine')
+            replay_constraints = tuple(replace(c, case_ids=tuple(i for i in c.case_ids if i in selected))
+                                       if c.case_ids is not None else c for c in spec.constraints)
+            _, replay_objective, replay_limits, replay_headline = prepare_coefficients(run.results, cases.loc[cases.ID.isin(selected)],
+                OptimisationSpec(spec.year_from, spec.year_to, replay_constraints, objective=spec.objective))
+            if any(not math.isclose(objective[i], replay_objective[i], rel_tol=1e-8, abs_tol=1e-6) for i in selected):
+                raise ValueError('Recommendation objective does not reconcile with the scenario engine')
             for original, replay in zip(limits, replay_limits):
                 if any(not math.isclose(original['coefficients'][i], replay['coefficients'][i], rel_tol=1e-8, abs_tol=1e-6) for i in selected):
                     raise ValueError('Recommendation constraints do not reconcile with the scenario engine')
-            for metric in METRICS:
+            for metric in headline:
                 if any(not math.isclose(headline[metric][i], replay_headline[metric][i], rel_tol=1e-8, abs_tol=1e-6) for i in selected):
                     raise ValueError('Recommendation headline metrics do not reconcile')
+            if not all(c['satisfied'] for c in mix_checks(cases, replay_headline['production'], selected, spec)):
+                raise ValueError('Recommendation mix does not reconcile with the scenario engine')
             result['diagnostics'] = [d.get('message', str(d)) for d in run.diagnostics]
             result['reconciled'] = True
         else:
             result['diagnostics'] = ['The best selection is empty. Require a case or a positive production floor to create an editable scenario.']
         case_names = cases.set_index('ID')
         result.update(status='optimal', selected_case_ids=selected, excluded_case_ids=[i for i in ids if i not in selected],
-            relaxation_pct=step, objective_value=sum(objective[i] for i in selected), constraint_checks=checks,
+            relaxation_pct=step, objective_value=sum(objective[i] for i in selected), constraint_checks=checks, mix_checks=shares,
             capex=sum(headline['capex'][i] for i in selected), production=sum(headline['production'][i] for i in selected),
             cases=[{'id': i, 'name': str(case_names.loc[i].get('Case Name', case_names.loc[i, 'Case'])),
-                    'selected': i in selected, 'npv': objective[i], 'capex': headline['capex'][i], 'production': headline['production'][i]} for i in ids])
+                    'selected': i in selected, 'objective_contribution': objective[i], 'npv': headline['npv'][i], 'capex': headline['capex'][i], 'production': headline['production'][i]} for i in ids])
         break
     result['solve_time_ms'] = round((monotonic() - started) * 1000)
     return result

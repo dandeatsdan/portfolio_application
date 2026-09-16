@@ -6,13 +6,12 @@ import { WorkingScenarioContext } from '../hooks/WorkingScenarioContext'
 import { isDirty } from '../hooks/scenarioDefinition'
 import { usePortfolio } from '../hooks/usePortfolio'
 import { solveOptimisation, getReferenceMeasure } from '../api/client'
-import OptimiserCaseControls from '../components/OptimiserCaseControls'
+import OptimiserControls from '../components/OptimiserControls'
 import RecommendationConfirmation from '../components/RecommendationConfirmation'
-import SwitchModeConfirmation from '../components/SwitchModeConfirmation'
 import {
-  YEARS, DEFAULT_OPTIMISER, newConstraint, constraintUnit,
+  YEARS, OBJECTIVES, DEFAULT_OPTIMISER, newConstraint, constraintUnit,
   optimiserRequest, recommendationDefinition, sortRecommendedCases,
-  buildReferenceTotals, initSliders, prePopulateBalancedMix,
+  referenceMix, changeMixShare, excludeRegionShares, excludedRegionRules, changeControlRules, effectiveCaseRule,
   mixTotal, runGateBlocked,
 } from './optimiserHelpers'
 import '../components/ScenarioResults.css'
@@ -28,15 +27,8 @@ const STATUSES = {
 }
 
 const MODES = [
-  { key: 'full',     label: 'Full Control',  desc: 'Solver has complete freedom. Find the unconstrained value ceiling.' },
-  { key: 'guided',   label: 'Guided',        desc: 'Set portfolio mix targets and financial limits. Solver works within your bounds.' },
-  { key: 'balanced', label: 'Balanced',      desc: 'Start from today\'s portfolio proportions and adjust the allocation.' },
-]
-
-const OBJECTIVES = [
-  { key: 'post_tax_fcf',    label: 'Free Cash Flow',    desc: 'Maximise post-tax free cash flow (undiscounted sum).' },
-  { key: 'underlying_rcop', label: 'Underlying RCOP',   desc: 'Maximise post-tax RCOP (undiscounted sum).' },
-  { key: 'production',      label: 'Production',        desc: 'Maximise total production (mmboe).' },
+  { key: 'full', label: 'Standard', desc: 'Choose an objective and set constraints and targets to optimise your portfolio.' },
+  { key: 'mix', label: 'Advanced', desc: 'All Standard options, plus portfolio mix targets and controls by region, country and case.' },
 ]
 
 function Year({ label, value, onChange }) {
@@ -49,78 +41,36 @@ function Year({ label, value, onChange }) {
   )
 }
 
-function MixSection({ title, section, dimField, cases, referenceTotals, onChange, onReset }) {
-  const dimTotals = referenceTotals?.[section.metric]?.[dimField] || {}
-  const grandTotal = Object.values(dimTotals).reduce((a, b) => a + b, 0)
+function MixSection({ title, section, reference, onChange, onReset, excluded = [] }) {
   const total = mixTotal(section.sliders)
-  const totalOk = Math.round(total) === 100
-
   return (
     <div className="optimiser-mix-section">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+      <div className="optimiser-mix-heading">
+        <label className="optimiser-check-label">
           <input type="checkbox" checked={section.enabled}
             onChange={e => onChange({ ...section, enabled: e.target.checked })} />
           {title}
         </label>
-        {section.enabled && (
-          <label style={{ fontSize: 13, marginLeft: 'auto' }}>
-            Metric&nbsp;
-            <select value={section.metric}
-              onChange={e => onChange({ ...section, metric: e.target.value })}>
-              <option value="production">Production</option>
-              <option value="capex">Capex</option>
-            </select>
-          </label>
-        )}
+        {section.enabled && <button type="button" className="saved-scenarios__trigger" onClick={onReset}>Reset to reference mix</button>}
       </div>
-      {section.enabled && (
-        <>
-          {onReset && (
-            <button type="button" className="saved-scenarios__trigger" style={{ marginBottom: 8 }} onClick={onReset}>
-              Reset to today's levels
-            </button>
-          )}
-          {Object.entries(section.sliders).map(([dim, pct]) => {
-            const refPct = grandTotal > 0 ? ((dimTotals[dim] || 0) / grandTotal) * 100 : 0
-            return (
-              <div key={dim} className="optimiser-mix-row">
-                <span className="optimiser-mix-label">{dim || 'Unknown'}</span>
-                <div className="optimiser-mix-slider">
-                  <div className="optimiser-mix-reference-bar" style={{ width: `${refPct}%` }} title={`Reference: ${refPct.toFixed(1)}%`} />
-                  <input type="range" min="0" max="100" step="1" value={pct}
-                    onChange={e => onChange({ ...section, sliders: { ...section.sliders, [dim]: Number(e.target.value) } })} />
-                </div>
-                <span className="optimiser-mix-value">{Math.round(Number(pct))}%</span>
-              </div>
-            )
-          })}
-          <div className={`optimiser-mix-total optimiser-mix-total--${totalOk ? 'ok' : 'error'}`}>
-            Total: {Math.round(total)}%
-            {!totalOk && <span className="optimiser-mix-warning"> — allocations must sum to 100% before running</span>}
+      {section.enabled && <>
+        <label className="optimiser-tolerance">Allowed difference (± percentage points)
+          <input type="number" min="0" max="100" step="0.1" required value={section.tolerance}
+            onChange={e => onChange({ ...section, tolerance: e.target.value })} />
+        </label>
+        {Object.entries(section.sliders).map(([value, pct]) => (
+          <div key={value} className="optimiser-mix-row">
+            <span className="optimiser-mix-label">{value}
+              <small className="results-case-id">Reference: {fmt(reference?.[value])}%{excluded.includes(value) ? ' · Excluded' : ''}</small>
+            </span>
+            <input type="range" min="0" max="100" step="1" value={pct}
+              aria-label={`${title}: ${value} target share`} disabled={excluded.includes(value)}
+              onChange={e => onChange({ ...section, sliders: changeMixShare(section.sliders, value, e.target.value, excluded) })} />
+            <span className="optimiser-mix-value">{fmt(pct)}%</span>
           </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function TierLocks({ title, locks, cases, dimField, onChange }) {
-  const dimValues = [...new Set(cases.map(c => c[dimField]).filter(Boolean))].sort()
-  return (
-    <div className="optimiser-tier">
-      <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{title}</p>
-      {dimValues.map(val => (
-        <div key={val} className="optimiser-tier-row">
-          <span>{val}</span>
-          <select value={locks[val] || 'optional'}
-            onChange={e => onChange({ ...locks, [val]: e.target.value })}>
-            <option value="optional">Optimiser chooses</option>
-            <option value="mandatory">All included</option>
-            <option value="excluded">All excluded</option>
-          </select>
-        </div>
-      ))}
+        ))}
+        <p className="optimiser-mix-total">Total: {fmt(total)}%</p>
+      </>}
     </div>
   )
 }
@@ -133,9 +83,10 @@ export default function PortfolioOptimiser() {
   const navigate = useNavigate()
 
   const [draft, setDraft] = useState(() => ({ ...DEFAULT_OPTIMISER, constraints: [] }))
-  const [referenceTotals, setReferenceTotals] = useState(null)
+  const [reference, setReference] = useState(null)
+  const [referenceError, setReferenceError] = useState(null)
+  const [referenceRetry, setReferenceRetry] = useState(0)
   const [reviewOpen, setReviewOpen] = useState(false)
-  const [pendingMode, setPendingMode] = useState(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState(null)
   const [outcome, setOutcome] = useState(null)
@@ -148,62 +99,40 @@ export default function PortfolioOptimiser() {
   useEffect(() => { setSidePanel(null); return () => { generation.current++ } }, [setSidePanel])
   useEffect(() => { if (outcome) resultRef.current?.focus() }, [outcome])
 
-  // Fetch reference totals once cases are loaded
+  const periodKey = `${draft.year_from}-${draft.year_to}`
+  const referenceReady = reference?.periodKey === periodKey
   useEffect(() => {
-    if (!cases.length) return
-    Promise.all([
-      getReferenceMeasure('Total Production (mboed)', { from: 2026, to: 2040 }),
-      getReferenceMeasure('Cash Capex', { from: 2026, to: 2040 }),
-    ]).then(([prod, capex]) => {
-      setReferenceTotals(buildReferenceTotals(cases, prod, capex))
-    }).catch(() => {})
-  }, [cases])
+    if (!cases.length || draft.year_from > draft.year_to) return
+    let active = true
+    setReference(null)
+    setReferenceError(null)
+    getReferenceMeasure('Total Production (mboed)', { from: draft.year_from, to: draft.year_to })
+      .then(rows => {
+        if (!active) return
+        const shares = referenceMix(cases, rows)
+        setReference({ periodKey, shares })
+        setDraft(d => ({ ...d,
+          group_entity_mix: { ...d.group_entity_mix, sliders: shares.group_entity },
+          region_mix: { ...d.region_mix, sliders: excludeRegionShares(shares.region, excludedRegionRules(d, cases)) },
+        }))
+      })
+      .catch(err => { if (active) setReferenceError(err.message) })
+    return () => { active = false }
+  }, [cases, draft.year_from, draft.year_to, periodKey, referenceRetry])
 
-  // Initialise sliders when cases first load
-  useEffect(() => {
-    if (!cases.length) return
-    setDraft(d => ({
-      ...d,
-      group_entity_mix: { ...d.group_entity_mix, sliders: initSliders(cases, 'group_entity') },
-      region_mix:       { ...d.region_mix,       sliders: initSliders(cases, 'region') },
-    }))
-  }, [cases])
-
-  function change(update) { setDraft(d => ({ ...d, ...update })); setOutcome(null); setError(null) }
-  function editConstraint(id, update) { change({ constraints: draft.constraints.map(c => c.id === id ? { ...c, ...update } : c) }) }
-
-  function applyModeSwitch(newMode) {
-    const reset = {
-      ...DEFAULT_OPTIMISER,
-      year_from: draft.year_from,
-      year_to: draft.year_to,
-      objective: draft.objective,
-      constraints: [],
-      mode: newMode,
-      group_entity_mix: { enabled: false, metric: 'production', sliders: initSliders(cases, 'group_entity') },
-      region_mix:       { enabled: false, metric: 'production', sliders: initSliders(cases, 'region') },
-    }
-    if (newMode === 'balanced' && referenceTotals) {
-      const pre = prePopulateBalancedMix(cases, referenceTotals)
-      Object.assign(reset, pre)
-    }
-    setDraft(reset); setOutcome(null); setError(null)
+  function change(update) {
+    generation.current++
+    setDraft(d => ({ ...d, ...update })); setOutcome(null); setError(null)
   }
-
-  function switchMode(newMode) {
-    if (newMode === draft.mode) return
-    const touched = draft.constraints.length ||
-      Object.values(draft.group_entity_locks).some(v => v !== 'optional') ||
-      Object.values(draft.region_locks).some(v => v !== 'optional') ||
-      draft.group_entity_mix.enabled || draft.region_mix.enabled
-    if (touched) { setPendingMode(newMode); return }
-    applyModeSwitch(newMode)
+  function editConstraint(id, update) { change({ constraints: draft.constraints.map(c => c.id === id ? { ...c, ...update } : c) }) }
+  function changeControls(update) {
+    change(changeControlRules(draft, cases, update, reference?.shares.region))
   }
 
   async function run() {
-    if (runLock.current) return
+    if (runLock.current || (draft.mode === 'mix' && !referenceReady)) return
     let request
-    try { request = optimiserRequest(draft, cases, referenceTotals) }
+    try { request = optimiserRequest(draft) }
     catch (err) { setError(err.message); return }
     const token = ++generation.current
     runLock.current = true; setRunning(true); setError(null); setOutcome(null)
@@ -230,15 +159,16 @@ export default function PortfolioOptimiser() {
     (result?.cases ?? []).filter(c => `${c.name} ${c.id}`.toLowerCase().includes(search.trim().toLowerCase())),
     sort
   )
-  const objLabel = outcome?.request?.objective
-  const objColLabel = objLabel === 'production' ? 'Production (mmboe)' : objLabel === 'underlying_rcop' ? 'RCOP ($m)' : 'FCF ($m)'
   const columns = [
     { key: 'name', label: 'Case' }, { key: 'selected', label: 'Recommendation' },
-    { key: 'npv', label: objColLabel }, { key: 'capex', label: 'Cash Capex ($m)' },
+    { key: 'objective_contribution', label: `${result?.objective_label ?? 'Objective'} (${result?.objective_unit ?? '$m'})` }, { key: 'capex', label: 'Cash Capex ($m)' },
     { key: 'production', label: 'Production (mmboe)' },
   ]
-  const blocked = runGateBlocked(draft)
-  const showMix = draft.mode === 'guided' || draft.mode === 'balanced'
+  const showMix = draft.mode === 'mix'
+  const blocked = runGateBlocked(draft) || (showMix && !referenceReady) || draft.year_from > draft.year_to
+  const regionExclusions = excludedRegionRules(draft, cases)
+  const excludedRegions = Object.keys(regionExclusions)
+  const controlStates = showMix ? cases.map(c => effectiveCaseRule(draft, c)) : []
 
   return (
     <div className="portfolio-optimiser">
@@ -247,7 +177,7 @@ export default function PortfolioOptimiser() {
       <div className="results-heading">
         <div>
           <h2>Portfolio Optimiser</h2>
-          <p>Find the portfolio selection that maximises value within your limits.</p>
+          <p>Choose what to maximise and find a portfolio that meets your limits.</p>
           <p className="text-small text-muted">All {cases.length} reference cases are candidates. Decisions are include or exclude at reference profiles.</p>
         </div>
       </div>
@@ -256,12 +186,13 @@ export default function PortfolioOptimiser() {
       <div className="optimiser-mode-selector">
         {MODES.map(m => (
           <button key={m.key} type="button" className="optimiser-mode-card"
-            aria-pressed={draft.mode === m.key} onClick={() => switchMode(m.key)}>
+            aria-pressed={draft.mode === m.key} disabled={running} onClick={() => change({ mode: m.key })}>
             <strong>{m.label}</strong>
             <small>{m.desc}</small>
           </button>
         ))}
       </div>
+      <p className="text-small text-muted">Switching modes keeps your settings. Mix targets and region, country and case controls apply only in Advanced.</p>
 
       <form onSubmit={e => { e.preventDefault(); run() }}>
         <fieldset disabled={running} className="optimiser-fields">
@@ -269,15 +200,12 @@ export default function PortfolioOptimiser() {
           {/* Step 1: Objective */}
           <section className="results-panel">
             <h3><span className="optimiser-step">1</span> Objective</h3>
-            <div className="optimiser-mode-selector" style={{ marginBottom: 16 }}>
-              {OBJECTIVES.map(o => (
-                <button key={o.key} type="button" className="optimiser-mode-card"
-                  aria-pressed={draft.objective === o.key}
-                  onClick={() => change({ objective: o.key })}>
-                  <strong>{o.label}</strong>
-                  <small>{o.desc}</small>
-                </button>
-              ))}
+            <p className="text-small text-muted">Choose what to maximise, then select the years to optimise.</p>
+            <div className="optimiser-mode-selector" aria-label="Optimisation objective">
+              {OBJECTIVES.map(o => <button key={o.key} type="button" className="optimiser-mode-card"
+                aria-pressed={draft.objective === o.key} onClick={() => change({ objective: o.key })}>
+                <strong>{o.label}</strong><small>{o.description}</small>
+              </button>)}
             </div>
             <div className="optimiser-objective">
               <Year label="From" value={draft.year_from} onChange={year_from => change({ year_from })} />
@@ -285,45 +213,10 @@ export default function PortfolioOptimiser() {
             </div>
           </section>
 
-          {/* Step 2: Portfolio mix — Guided and Balanced modes only */}
-          {showMix && (
-            <section className="results-panel">
-              <h3><span className="optimiser-step">2</span> Portfolio mix</h3>
-              <p className="text-small text-muted">
-                Set minimum production allocations by dimension. The grey bar shows today's reference proportion.
-                Enabled mix sections must sum to 100% before you can run.
-              </p>
-              <MixSection
-                title="Oil / Gas mix (Group Entity)"
-                section={draft.group_entity_mix}
-                dimField="group_entity"
-                cases={cases}
-                referenceTotals={referenceTotals}
-                onChange={s => change({ group_entity_mix: s })}
-                onReset={draft.mode === 'balanced' && referenceTotals ? () => {
-                  const pre = prePopulateBalancedMix(cases, referenceTotals)
-                  change({ group_entity_mix: pre.group_entity_mix })
-                } : undefined}
-              />
-              <MixSection
-                title="Regional mix"
-                section={draft.region_mix}
-                dimField="region"
-                cases={cases}
-                referenceTotals={referenceTotals}
-                onChange={s => change({ region_mix: s })}
-                onReset={draft.mode === 'balanced' && referenceTotals ? () => {
-                  const pre = prePopulateBalancedMix(cases, referenceTotals)
-                  change({ region_mix: pre.region_mix })
-                } : undefined}
-              />
-            </section>
-          )}
-
-          {/* Step 3 (or 2 in Full Control): Portfolio limits */}
+          {/* Constraints follow the objective in both modes. */}
           <section className="results-panel">
             <header className="results-panel__header">
-              <h3><span className="optimiser-step">{showMix ? 3 : 2}</span> Portfolio limits</h3>
+              <h3><span className="optimiser-step">2</span> Constraints</h3>
               <button type="button" className="saved-scenarios__trigger"
                 disabled={draft.constraints.length >= 30}
                 onClick={() => change({ constraints: [...draft.constraints, newConstraint(crypto.randomUUID())] })}>
@@ -331,7 +224,7 @@ export default function PortfolioOptimiser() {
               </button>
             </header>
             {draft.constraints.length === 0 && (
-              <p className="text-small text-muted">No limits yet. Add constraints, or run with only your mix targets and case controls.</p>
+              <p className="text-small text-muted">No limits yet. Add a constraint or optimise using your current settings.</p>
             )}
             {draft.constraints.map((c, i) => (
               <div className="optimiser-constraint" key={c.id}>
@@ -361,7 +254,7 @@ export default function PortfolioOptimiser() {
                 </label>
                 <label>Flexibility
                   <select value={Number(c.flexibility_pct) > 0 ? 'flexible' : 'strict'}
-                    onChange={e => editConstraint(c.id, { flexibility_pct: e.target.value === 'strict' ? 0 : 15 })}>
+                    onChange={e => editConstraint(c.id, { flexibility_pct: e.target.value === 'strict' ? 0 : 5 })}>
                     <option value="strict">Strict</option>
                     <option value="flexible">Allow adjustment</option>
                   </select>
@@ -384,38 +277,43 @@ export default function PortfolioOptimiser() {
             )}
           </section>
 
-          {/* Case controls */}
-          <section className="results-panel">
-            <h3><span className="optimiser-step">{showMix ? 4 : 3}</span> Case controls</h3>
-            <p className="text-small text-muted">Lock entire regions or groups, then override individual cases if needed.</p>
+          {showMix && (
+            <section className="results-panel">
+              <h3><span className="optimiser-step">3</span> Portfolio mix</h3>
+              <p className="text-small text-muted">
+                Targets are shares of selected production for {draft.year_from}–{draft.year_to}.
+                Adjusting one share redistributes the others to keep 100%. Whole cases are selected,
+                so the default allowance is ±5 percentage points. Changing the period resets targets to its reference mix.
+              </p>
+              {referenceError ? <div role="alert"><p>{referenceError}</p><button type="button" onClick={() => setReferenceRetry(n => n + 1)}>Retry reference mix</button></div>
+                : !referenceReady ? <p role="status">Loading reference production mix…</p> : <>
+                <MixSection title="Oil / Gas mix" section={draft.group_entity_mix}
+                  reference={reference.shares.group_entity}
+                  onChange={section => change({ group_entity_mix: section })}
+                  onReset={() => change({ group_entity_mix: { ...draft.group_entity_mix, sliders: reference.shares.group_entity } })} />
+                <MixSection title="Regional mix" section={draft.region_mix} reference={reference.shares.region}
+                  excluded={excludedRegions} onChange={section => change({ region_mix: section })}
+                  onReset={() => change({ region_mix: { ...draft.region_mix, sliders: excludeRegionShares(reference.shares.region, regionExclusions) } })} />
+                <p className="text-small text-muted">Excluding every case in a region redistributes its regional target to the others. Oil / Gas targets stay as set and may need adjusting.</p>
+              </>}
+            </section>
+          )}
 
-            <TierLocks title="Group Entity locks" locks={draft.group_entity_locks} cases={cases}
-              dimField="group_entity" onChange={locks => change({ group_entity_locks: locks })} />
-
-            <TierLocks title="Region locks" locks={draft.region_locks} cases={cases}
-              dimField="region" onChange={locks => change({ region_locks: locks })} />
-
-            <details className="optimiser-analyst-section">
-              <summary>Individual case overrides</summary>
-              <OptimiserCaseControls
-                cases={cases}
-                mandatoryIds={draft.mandatory_case_ids}
-                excludedIds={draft.excluded_case_ids}
-                onChange={({ mandatory_case_ids, excluded_case_ids }) =>
-                  change({ mandatory_case_ids, excluded_case_ids })}
-              />
-            </details>
-          </section>
+          {showMix && <section className="results-panel">
+            <h3><span className="optimiser-step">4</span> Controls</h3>
+            <p className="text-small text-muted">Choose by region, then refine by country and case. A country overrides its region; a case overrides both.
+              Inherit follows the parent rule. Optimiser chooses removes that restriction. Existing more-specific choices remain in effect when a parent changes.</p>
+            <OptimiserControls cases={cases} draft={draft} onChange={changeControls} />
+          </section>}
 
           {/* Run */}
           <section className="results-panel">
             <div className="results-panel__header">
               <div>
-                <h3><span className="optimiser-step">{showMix ? 5 : 4}</span> Run optimisation</h3>
+                <h3><span className="optimiser-step">{showMix ? 5 : 3}</span> Run optimisation</h3>
                 <p className="text-small text-muted">
-                  {draft.constraints.length} constraints ·{' '}
-                  {draft.mandatory_case_ids.length} individual required ·{' '}
-                  {draft.excluded_case_ids.length} individual excluded
+                  {draft.constraints.length} constraints
+                  {showMix && ` · ${controlStates.filter(s => s === 'mandatory').length} cases required · ${controlStates.filter(s => s === 'excluded').length} cases excluded`}
                 </p>
               </div>
               <button type="submit" className="saved-scenarios__trigger optimiser-primary"
@@ -425,7 +323,7 @@ export default function PortfolioOptimiser() {
             </div>
             {blocked && !running && (
               <p role="alert" className="text-small" style={{ color: '#c0392b' }}>
-                Portfolio mix allocations must each sum to 100% before running.
+                Check the year range and mix settings. Advanced also needs loaded reference data and targets totalling 100%.
               </p>
             )}
             {running && <p role="status">Finding a portfolio that meets your limits…</p>}
@@ -468,15 +366,13 @@ export default function PortfolioOptimiser() {
               {/* Executive KPI tiles — always visible */}
               <p className="text-small text-muted">
                 Metrics for {outcome.request.year_from}–{outcome.request.year_to}.{' '}
-                Reference {OBJECTIVES.find(o => o.key === outcome.request.objective)?.label ?? 'value'}:{' '}
-                {outcome.request.objective === 'production' ? fmt(result.reference_npv) + ' mmboe' : '$' + fmt(result.reference_npv) + 'm'}.
+                Reference {result.objective_label}: {fmt(result.reference_objective_value)} {result.objective_unit}.
               </p>
               <div className="results-kpis">
                 {[
-                  [OBJECTIVES.find(o => o.key === outcome.request.objective)?.label ?? 'Objective', result.objective_value,
-                    outcome.request.objective === 'production' ? 'mmboe' : '$m'],
+                  [result.objective_label, result.objective_value, result.objective_unit],
                   ['Cash Capex', result.capex, '$m'],
-                  ['Production', result.production, 'mmboe'],
+                  ...(result.objective === 'production' ? [] : [['Production', result.production, 'mmboe']]),
                   ['Selected cases', result.selected_case_ids.length, `of ${result.cases.length}`],
                 ].map(([label, value, unit]) => (
                   <article className="results-kpi" key={label}>
@@ -485,6 +381,17 @@ export default function PortfolioOptimiser() {
                   </article>
                 ))}
               </div>
+
+              {result.mix_checks?.length > 0 && <div className="results-table-scroll">
+                <h3>Production mix achieved</h3>
+                <table>
+                  <thead><tr><th>Mix</th><th>Category</th><th>Target</th><th>Allowed range</th><th>Achieved</th></tr></thead>
+                  <tbody>{result.mix_checks.map(c => <tr key={`${c.dimension}-${c.value}`}>
+                    <td>{c.dimension === 'region' ? 'Region' : 'Oil / Gas'}</td><td>{c.value}</td>
+                    <td>{fmt(c.target_share_pct)}%</td><td>{fmt(c.min_share_pct)}–{fmt(c.max_share_pct)}%</td><td>{fmt(c.actual_share_pct)}%</td>
+                  </tr>)}</tbody>
+                </table>
+              </div>}
 
               {/* Recommended cases table — always visible */}
               <header className="results-table-tools">
@@ -521,7 +428,7 @@ export default function PortfolioOptimiser() {
                       <tr key={c.id} className={c.selected ? 'optimiser-case--recommended' : 'optimiser-case--unselected'}>
                         <td>{c.name}<small className="results-case-id">ID {c.id}</small></td>
                         <td>{c.selected ? 'Recommended' : 'Not selected'}</td>
-                        <td>{fmt(c.npv)}</td>
+                        <td>{fmt(c.objective_contribution)}</td>
                         <td>{fmt(c.capex)}</td>
                         <td>{fmt(c.production)}</td>
                       </tr>
@@ -571,14 +478,6 @@ export default function PortfolioOptimiser() {
             <p>{fmt(result.solve_time_ms / 1000)} seconds including verification.</p>
           </details>
         </section>
-      )}
-
-      {pendingMode && (
-        <SwitchModeConfirmation
-          newModeLabel={MODES.find(m => m.key === pendingMode)?.label}
-          onCancel={() => setPendingMode(null)}
-          onConfirm={() => { applyModeSwitch(pendingMode); setPendingMode(null) }}
-        />
       )}
 
       {reviewOpen && result && (
