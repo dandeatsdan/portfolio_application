@@ -292,7 +292,11 @@ def dimension_values(cases, dimension):
 
 
 def resolve_case_controls(cases, spec):
-    """Apply region -> country -> case rules; explicit optional clears inheritance."""
+    """Apply region -> country -> case rules; explicit optional clears inheritance.
+
+    Priority (highest to lowest): explicit case > geography (region/country) > plan type.
+    Plan type rules act as defaults for cases not already set by geography rules.
+    """
     states = {int(i): 'optional' for i in cases.ID}
     allowed = {'optional', 'mandatory', 'excluded', 'reference'}
     regions = dimension_values(cases, 'region') if spec.region_rules or spec.country_rules else None
@@ -333,12 +337,12 @@ def resolve_case_controls(cases, spec):
                 prior = states[int(i)]
                 if rule.rule == 'optional':
                     continue
-                if prior == 'optional' or prior == rule.rule:
+                if prior == 'optional':
+                    # No geography rule set — apply plan type default.
                     states[int(i)] = rule.rule
-                elif {prior, rule.rule} <= {'mandatory', 'reference'}:
-                    states[int(i)] = 'reference'
-                else:
-                    states[int(i)] = 'conflict'
+                elif prior == rule.rule or {prior, rule.rule} <= {'mandatory', 'reference'}:
+                    states[int(i)] = 'reference' if prior != rule.rule else prior
+                # else: geography rule already set a different state; it takes precedence.
     if set(spec.mandatory_case_ids) & set(spec.excluded_case_ids):
         raise ValueError('A case cannot be both mandatory and excluded')
     seen = set()
@@ -355,7 +359,7 @@ def resolve_case_controls(cases, spec):
         states[i] = rule
     conflicts = [i for i, state in states.items() if state == 'conflict']
     if conflicts:
-        raise ValueError(f'Conflicting geography and plan type rules for cases {conflicts}; set an explicit case choice')
+        raise ValueError(f'Conflicting rules for cases {conflicts}; set an explicit case choice to resolve')
     return replace(spec, reference_case_ids=tuple(sorted(i for i, state in states.items() if state == 'reference')),
                    mandatory_case_ids=tuple(sorted(i for i, state in states.items() if state in {'mandatory', 'reference'})),
                    excluded_case_ids=tuple(sorted(i for i, state in states.items() if state == 'excluded')))
