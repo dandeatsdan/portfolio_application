@@ -85,7 +85,8 @@ export default function PortfolioOptimiser() {
     getReferenceMeasure('Total Production (mboed)', { from: draft.year_from, to: draft.year_to })
       .then(rows => {
         if (!active) return
-        const shares = referenceMix(cases, rows)
+        const solverCases = cases.filter(c => c.meta?.toLowerCase() !== 'overview')
+        const shares = referenceMix(solverCases, rows)
         setReference({ periodKey, shares })
         setDraft(d => ({ ...d,
           group_entity_mix: { ...d.group_entity_mix, sliders: shares.group_entity },

@@ -451,8 +451,10 @@ def prepare_coefficients(profiles, cases, spec, reference_limits=None):
             raise ValueError(f'{metric} values must be finite')
         # Capex is signed net expenditure, matching existing reports. A positive
         # raw cash-flow entry reduces expenditure; never reject, abs or clip it.
-        if metric == 'production' and any(v < -1e-8 for v in result.values()):
-            raise ValueError('Production values must be nonnegative; review the source data')
+        # Production can net negative for equity-accounted or aggregated cases;
+        # treat those as zero contribution rather than blocking the entire run.
+        if metric == 'production':
+            result = {i: max(v, 0.0) for i, v in result.items()}
         # Pad all portfolio IDs with zero so the solver model is complete.
         return {i: result.get(i, 0.0) for i in ids}
 

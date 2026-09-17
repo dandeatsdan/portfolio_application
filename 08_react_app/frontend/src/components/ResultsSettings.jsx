@@ -45,7 +45,7 @@ export default function ResultsSettings({ settings, currentName, currentId, metr
           {select('From', draft.yearFrom, years, value => setDraft(s => ({ ...s, yearFrom: Number(value) })))}
           {select('To', draft.yearTo, years, value => setDraft(s => ({ ...s, yearTo: Number(value) })))}
         </div>
-        {['plot1', 'plot2'].map((key, index) => <section key={key}><h3>Plot {index + 1}</h3>
+        {['plot1', 'plot2', 'plot3'].map((key, index) => <section key={key}><h3>Plot {index + 1}</h3>
           {select('Metric', draft[key].metric, metricChoices, metric => setDraft(s => ({ ...s, [key]: { ...s[key], metric } })))}
           {select('Variance breakdown', draft[key].breakdown, Object.entries(BREAKDOWNS).map(([value, label]) => ({ value, label })), breakdown => setDraft(s => ({ ...s, [key]: { ...s[key], breakdown } })))}
         </section>)}

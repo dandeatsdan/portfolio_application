@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine } from 'recharts'
+import { ResponsiveContainer, ComposedChart, LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine } from 'recharts'
 import { getResultsAnalysis } from '../api/client'
 import { analysisRequest, createAnalysisLoader } from '../pages/resultsRequests'
 import { waterfallPositions, KPI_TITLES } from '../pages/resultsHelpers'
 import { compareTableValues } from '../utils/tableSort.js'
 import { metricDisplayName } from '../pages/referenceMeasures'
+import theme from '../theme'
+
+const seriesColor = i => theme.chartPalette[i % theme.chartPalette.length]
 
 export const number = value => value == null ? '—' : Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })
 function useAnalysis(payload) {
@@ -38,11 +41,13 @@ export function ResultsKpis({ payload }) {
 export function ResultsPlot({ payload, mode, onMode, primaryName, comparisonName, breakdown }) {
   const state = useAnalysis(payload)
   const rows = state.data ? (mode === 'variance' ? waterfallPositions(state.data.rows) : state.data.rows) : []
+  const seriesKeys = mode === 'column' ? (state.data?.series ?? []) : []
   const unit = state.data?.unit
+  const modeLabels = { profile: 'Profile', variance: 'Variance', column: 'Column' }
   return <section className="results-panel">
-    <header className="results-panel__header"><div><h3>{metricDisplayName(payload.metric)}</h3><small>{mode === 'variance' ? `Variance by ${breakdown}` : 'Annual profile'}{unit ? ` · ${unit}` : ''}</small></div>
+    <header className="results-panel__header"><div><h3>{metricDisplayName(payload.metric)}</h3><small>{mode === 'variance' ? `Variance by ${breakdown}` : mode === 'column' ? `By ${breakdown} · scenario` : 'Annual profile'}{unit ? ` · ${unit}` : ''}</small></div>
       <div className="results-toggle" role="group" aria-label={`${metricDisplayName(payload.metric)} chart view`}>
-        {['profile', 'variance'].map(view => <button key={view} aria-pressed={mode === view} onClick={() => onMode(view)}>{view === 'profile' ? 'Profile' : 'Variance'}</button>)}
+        {['profile', 'variance', 'column'].map(view => <button key={view} aria-pressed={mode === view} onClick={() => onMode(view)}>{modeLabels[view]}</button>)}
       </div>
     </header>
     {!state.data ? <Status state={state} /> : <>
@@ -53,15 +58,27 @@ export function ResultsPlot({ payload, mode, onMode, primaryName, comparisonName
             <Line type="linear" dataKey="reference" name="Reference" stroke="#777b70" dot={false} strokeDasharray="4 3" />
             <Line type="linear" dataKey="primary" name={primaryName} stroke="#006b3c" strokeWidth={3} dot={false} />
             {comparisonName && <Line type="linear" dataKey="comparison" name={comparisonName} stroke="#96723b" strokeWidth={2} strokeDasharray="8 3" dot={false} />}
-          </LineChart> : <BarChart data={rows} margin={{ top: 15, right: 20, bottom: 45, left: 0 }}>
+          </LineChart> : mode === 'column' ? <ComposedChart data={rows} margin={{ top: 15, right: 20, bottom: 10, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="year" tick={{ fontSize: 11 }} /><YAxis tickFormatter={number} width={70} tick={{ fontSize: 11 }} /><Tooltip formatter={(value, name) => [`${number(value)} ${unit}`, name]} /><Legend wrapperStyle={{ fontSize: 11 }} />
+            {seriesKeys.map((sk, i) => <Bar key={sk} dataKey={sk} name={sk} stackId="scenario" fill={seriesColor(i)} isAnimationActive={false} />)}
+            <Line type="linear" dataKey="reference" name="Reference" stroke="#777b70" dot={false} strokeDasharray="4 3" strokeWidth={2} />
+          </ComposedChart> : <BarChart data={rows} margin={{ top: 15, right: 20, bottom: 45, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-25} textAnchor="end" interval={0} /><YAxis tickFormatter={number} width={70} tick={{ fontSize: 11 }} /><ReferenceLine y={0} stroke="#777" />
             <Tooltip content={({ active, payload: items }) => active && items?.length ? <div className="results-tooltip"><strong>{items[0].payload.label}</strong><p>{number(items[0].payload.value)} {unit}</p></div> : null} />
             <Bar dataKey="range" isAnimationActive={false}>{rows.map((row, i) => <Cell key={i} fill={row.type === 'absolute' ? '#006b3c' : row.value >= 0 ? '#63859b' : '#ae885a'} />)}</Bar>
           </BarChart>}
         </ResponsiveContainer>
       </div></div>
-      <details className="results-data"><summary>View chart data</summary><div className="results-table-scroll"><table><thead><tr>{mode === 'profile' ? <><th>Year</th><th>Reference</th><th>{primaryName}</th>{comparisonName && <th>{comparisonName}</th>}</> : <><th>Step</th><th>Value ({unit})</th><th>From</th><th>To</th></>}</tr></thead><tbody>
-        {rows.map((r, i) => <tr key={i}>{mode === 'profile' ? <><td>{r.year}</td><td>{number(r.reference)}</td><td>{number(r.primary)}</td>{comparisonName && <td>{number(r.comparison)}</td>}</> : <><td>{r.label}</td><td>{number(r.value)}</td><td>{number(r.start)}</td><td>{number(r.end)}</td></>}</tr>)}
+      <details className="results-data"><summary>View chart data</summary><div className="results-table-scroll"><table><thead><tr>
+        {mode === 'profile' ? <><th>Year</th><th>Reference</th><th>{primaryName}</th>{comparisonName && <th>{comparisonName}</th>}</>
+          : mode === 'column' ? <><th>Year</th><th>Reference</th>{seriesKeys.map(sk => <th key={sk}>{sk}</th>)}</>
+          : <><th>Step</th><th>Value ({unit})</th><th>From</th><th>To</th></>}
+      </tr></thead><tbody>
+        {rows.map((r, i) => <tr key={i}>
+          {mode === 'profile' ? <><td>{r.year}</td><td>{number(r.reference)}</td><td>{number(r.primary)}</td>{comparisonName && <td>{number(r.comparison)}</td>}</>
+            : mode === 'column' ? <><td>{r.year}</td><td>{number(r.reference)}</td>{seriesKeys.map(sk => <td key={sk}>{number(r[sk])}</td>)}</>
+            : <><td>{r.label}</td><td>{number(r.value)}</td><td>{number(r.start)}</td><td>{number(r.end)}</td></>}
+        </tr>)}
       </tbody></table></div></details>
     </>}
   </section>

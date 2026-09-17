@@ -1,7 +1,8 @@
 /**
  * Portfolio Viewer
  */
-import { useState, useEffect, useContext } from 'react'
+import { useState, useEffect, useContext, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, BarChart, Bar,
@@ -209,6 +210,87 @@ function FlexChartPanel({ metric, groupBy, filters }) {
 }
 
 
+// ─── column filter dropdown ───────────────────────────────────────────────────
+const FILTERABLE_COLS = ['Case Name', 'Plan Type', 'Group Entity', 'Segment', 'Region', 'Country']
+
+function ColumnFilterDropdown({ colKey, allRows, active, onCommit }) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState(active)
+  const [search, setSearch] = useState('')
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const btnRef = useRef(null)
+  const menuRef = useRef(null)
+  const options = [...new Set(allRows.map(r => r[colKey]).filter(v => v != null && v !== ''))].sort()
+
+  useEffect(() => { setDraft(active) }, [active])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = e => {
+      if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
+      setOpen(false); setDraft(active)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open, active])
+
+  const openDropdown = () => {
+    const rect = btnRef.current.getBoundingClientRect()
+    setPos({ top: rect.bottom + window.scrollY + 2, left: rect.left + window.scrollX })
+    setSearch('')
+    setOpen(o => !o)
+  }
+
+  const toggle = v => setDraft(prev => { const next = new Set(prev); next.has(v) ? next.delete(v) : next.add(v); return next })
+  const hasFilter = active.size > 0
+
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={openDropdown}
+        title={`Filter ${colKey}`}
+        aria-label={`Filter ${colKey}`}
+        style={{ padding: '1px 3px', border: 'none', background: 'transparent', cursor: 'pointer', color: hasFilter ? 'var(--color-accent-dark)' : 'var(--color-text-muted)', fontSize: 11, lineHeight: 1, flexShrink: 0 }}
+      >
+        {hasFilter ? '▼' : '⏷'}
+      </button>
+      {open && createPortal(
+        <div ref={menuRef} style={{ position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999, background: '#fff', border: '1px solid var(--color-border)', borderRadius: 4, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', minWidth: 200, maxHeight: 280, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => setDraft(new Set(options))} style={{ fontSize: 11, padding: '2px 6px', border: '1px solid var(--color-border)', borderRadius: 3, cursor: 'pointer', background: '#fff' }}>All</button>
+            <button type="button" onClick={() => setDraft(new Set())} style={{ fontSize: 11, padding: '2px 6px', border: '1px solid var(--color-border)', borderRadius: 3, cursor: 'pointer', background: '#fff' }}>None</button>
+          </div>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--color-border)' }}>
+            <input
+              type="search"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search…"
+              autoFocus
+              style={{ width: '100%', fontSize: 12, padding: '3px 6px', border: '1px solid var(--color-border)', borderRadius: 3, boxSizing: 'border-box', outline: 'none' }}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {options.filter(v => !search || v.toLowerCase().includes(search.toLowerCase())).map(v => (
+              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}>
+                <input type="checkbox" checked={draft.has(v)} onChange={() => toggle(v)} style={{ accentColor: 'var(--color-accent-dark)', cursor: 'pointer' }} />
+                {v}
+              </label>
+            ))}
+          </div>
+          <div style={{ padding: '6px 8px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+            <button type="button" onClick={() => { setOpen(false); setDraft(active) }} style={{ fontSize: 11, padding: '3px 8px', border: '1px solid var(--color-border)', borderRadius: 3, cursor: 'pointer', background: '#fff' }}>Cancel</button>
+            <button type="button" onClick={() => { onCommit(draft); setOpen(false) }} style={{ fontSize: 11, padding: '3px 8px', border: 'none', borderRadius: 3, cursor: 'pointer', background: 'var(--color-accent-dark)', color: '#fff' }}>Apply</button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function PortfolioViewer() {
@@ -226,6 +308,7 @@ export default function PortfolioViewer() {
   const [entityRetry,   setEntityRetry]   = useState(0)
   const [entitySearch,  setEntitySearch]  = useState('')
   const [tableSort,     setTableSort]     = useState(null)
+  const [tableFilters,  setTableFilters]  = useState(() => Object.fromEntries(FILTERABLE_COLS.map(c => [c, new Set()])))
   const [chartSelection, setChartSelection] = useState(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [viewSettings, setViewSettings] = useState({ metric1: PROD_METRIC, group1: '', metric2: 'Cash Capex', group2: '', metric3: 'Post-Tax Cash Flow', group3: '', rankBy: 'case_name', rankMetric: 'Post-Tax Cash Flow', topN: '10', creamGroupBy: 'case_name' })
@@ -315,9 +398,14 @@ export default function PortfolioViewer() {
     })
   }
 
-  const filteredCases = entityRows.filter(r =>
-    !entitySearch || r['Case Name']?.toLowerCase().includes(entitySearch.toLowerCase())
-  )
+  const hasTableFilters = FILTERABLE_COLS.some(c => tableFilters[c].size > 0)
+  const filteredCases = entityRows.filter(r => {
+    if (entitySearch && !r['Case Name']?.toLowerCase().includes(entitySearch.toLowerCase())) return false
+    for (const col of FILTERABLE_COLS) {
+      if (tableFilters[col].size > 0 && !tableFilters[col].has(r[col])) return false
+    }
+    return true
+  })
   const sortedCases = sortCaseSummaryRows(filteredCases, shortlistIds, tableSort)
 
   const toggleTableSort = (key) => {
@@ -479,7 +567,7 @@ export default function PortfolioViewer() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.4rem' }}>
           <div>
             <span style={{ fontWeight: 600, fontSize: 14 }}>Case Summary</span>
-            {entityStatus === 'ready' && <span style={{ color: 'var(--color-text-muted)', fontSize: 13, marginLeft: 8 }}>{filteredCases.length} cases</span>}
+            {entityStatus === 'ready' && <span style={{ color: 'var(--color-text-muted)', fontSize: 13, marginLeft: 8 }}>{filteredCases.length}{hasTableFilters || entitySearch ? ` of ${entityRows.length}` : ''} cases</span>}
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <input
@@ -502,6 +590,46 @@ export default function PortfolioViewer() {
             >
               Reset sorting
             </button>
+            <button
+              type="button"
+              onClick={() => setTableFilters(Object.fromEntries(FILTERABLE_COLS.map(c => [c, new Set()])))}
+              disabled={!hasTableFilters}
+              style={{
+                padding: '0.45rem 1.1rem', background: '#fff',
+                color: hasTableFilters ? 'var(--color-accent-dark)' : 'var(--color-text-muted)',
+                border: '1px solid var(--color-border)', borderRadius: 4,
+                fontSize: 13, fontWeight: 600,
+                cursor: hasTableFilters ? 'pointer' : 'default',
+              }}
+            >
+              Reset filters
+            </button>
+            {(() => {
+              const highlightedCases = chartSelection ? filteredCases.filter(r => isChartHighlighted(r)) : filteredCases
+              const hasHighlight = !!chartSelection
+              const label = hasHighlight ? 'Select highlighted' : 'Select all'
+              const active = hasHighlight && highlightedCases.length > 0
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ids = new Set(highlightedCases.map(r => r.ID))
+                    setShortlistIds(prev => new Set([...prev, ...ids]))
+                  }}
+                  disabled={highlightedCases.length === 0}
+                  style={{
+                    padding: '0.45rem 1.1rem',
+                    background: active ? 'var(--color-accent-dark)' : '#fff',
+                    color: active ? '#fff' : highlightedCases.length > 0 ? 'var(--color-accent-dark)' : 'var(--color-text-muted)',
+                    border: active ? 'none' : '1px solid var(--color-border)', borderRadius: 4,
+                    fontSize: 13, fontWeight: 600,
+                    cursor: highlightedCases.length > 0 ? 'pointer' : 'default',
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })()}
             <button
               type="button"
               onClick={() => setShortlistIds(new Set())}
@@ -551,22 +679,58 @@ export default function PortfolioViewer() {
             </colgroup>
             <thead>
               <tr style={{ background: 'var(--color-surface)', borderBottom: '2px solid var(--color-border)' }}>
-                <th scope="col" aria-label="Shortlist" />
+                <th scope="col" aria-label="Shortlist" style={{ padding: '7px 8px', textAlign: 'center' }}>
+                  {(() => {
+                    const filteredIds = filteredCases.map(r => r.ID)
+                    const checkedCount = filteredIds.filter(id => shortlistIds.has(id)).length
+                    const allChecked = filteredIds.length > 0 && checkedCount === filteredIds.length
+                    const someChecked = checkedCount > 0 && !allChecked
+                    return (
+                      <input
+                        type="checkbox"
+                        checked={allChecked}
+                        ref={el => { if (el) el.indeterminate = someChecked }}
+                        aria-label={allChecked ? 'Deselect all highlighted' : 'Select all highlighted'}
+                        title={allChecked ? 'Deselect all highlighted' : 'Select all highlighted'}
+                        onChange={() => {
+                          if (allChecked) {
+                            setShortlistIds(prev => { const next = new Set(prev); filteredIds.forEach(id => next.delete(id)); return next })
+                          } else {
+                            setShortlistIds(prev => new Set([...prev, ...filteredIds]))
+                          }
+                        }}
+                        style={{ accentColor: 'var(--color-accent-dark)', cursor: 'pointer' }}
+                      />
+                    )
+                  })()}
+                </th>
                 {CASE_SUMMARY_COLUMNS.map(({ key, label, numeric }) => {
                   const direction = tableSort?.key === key ? tableSort.direction : undefined
                   const nextDirection = direction === 'ascending' ? 'descending' : 'ascending'
+                  const isFilterable = FILTERABLE_COLS.includes(key)
+                  const filterActive = isFilterable && tableFilters[key].size > 0
                   return (
-                    <th key={key} scope="col" aria-sort={direction} style={{ padding: '7px 8px', textAlign: numeric ? 'right' : 'left', fontWeight: 600, color: 'var(--color-text-muted)', fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      <button
-                        type="button"
-                        onClick={() => toggleTableSort(key)}
-                        aria-label={`${label}: sort ${nextDirection}`}
-                        title={`${label}: sort ${nextDirection}`}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: numeric ? 'flex-end' : 'flex-start', gap: 3, width: '100%', padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit', textAlign: 'inherit' }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-                        <span aria-hidden="true" style={{ flexShrink: 0, fontSize: 9 }}>{direction === 'ascending' ? '▲' : direction === 'descending' ? '▼' : '↕'}</span>
-                      </button>
+                    <th key={key} scope="col" aria-sort={direction} style={{ padding: '7px 8px', textAlign: numeric ? 'right' : 'left', fontWeight: 600, color: filterActive ? 'var(--color-accent-dark)' : 'var(--color-text-muted)', fontSize: 10, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: numeric ? 'flex-end' : 'flex-start', gap: 2 }}>
+                        <button
+                          type="button"
+                          onClick={() => toggleTableSort(key)}
+                          aria-label={`${label}: sort ${nextDirection}`}
+                          title={`${label}: sort ${nextDirection}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 3, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit', textAlign: 'inherit', cursor: 'pointer', minWidth: 0 }}
+                        >
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                          <span aria-hidden="true" style={{ flexShrink: 0, fontSize: 9 }}>{direction === 'ascending' ? '▲' : direction === 'descending' ? '▼' : '↕'}</span>
+                        </button>
+                        {isFilterable && (
+                          <ColumnFilterDropdown
+                            colKey={key}
+                            allRows={entityRows}
+                            active={tableFilters[key]}
+                            onCommit={selection => setTableFilters(prev => ({ ...prev, [key]: selection }))}
+                          />
+                        )}
+                      </div>
                     </th>
                   )
                 })}

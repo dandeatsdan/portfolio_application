@@ -48,7 +48,7 @@ def get_cases():
             "region":       str(row["Region"]),
             "country":      str(row["Country"]),
             "plan_type":    str(row["Plan Type"]),
-            "meta":         str(row.get("Meta", "")),
+            "meta":         str(row.get("Meta Data", row.get("Meta", ""))),
         })
     return records
 

@@ -67,7 +67,7 @@ class AnalysisRequest(BaseModel):
     baseline: list[ProfileRow]
     scenario: list[ProfileRow]
     comparison: list[ProfileRow] | None = None
-    kind: Literal['kpis', 'profile', 'waterfall', 'impact']
+    kind: Literal['kpis', 'profile', 'waterfall', 'impact', 'stacked']
     metric: str = 'Post-Tax Cash Flow'
     group_by: Literal['case_name', 'region', 'country', 'group_entity', 'plan_type'] = 'case_name'
     year_from: int = Field(default=2026, ge=2026, le=2040)
@@ -80,7 +80,7 @@ class AnalysisRequest(BaseModel):
     def valid_period(self):
         if self.year_from > self.year_to:
             raise ValueError('Start year must not exceed end year')
-        if self.metric == 'Post-tax NPV' and (self.average or self.kind != 'impact'):
+        if self.metric == 'Post-tax NPV' and (self.average or self.kind not in ('impact', 'stacked')):
             raise ValueError('NPV is available only as a total case impact')
         return self
 
@@ -110,6 +110,28 @@ def analysis(request: AnalysisRequest):
     ids = request.case_ids
     b, s = frame(request.baseline, ids), frame(request.scenario, ids)
     years = list(range(request.year_from, request.year_to + 1))
+    if request.kind == 'stacked':
+        # Per-year per-series scenario totals + reference total line.
+        dim_col = {'case_name': 'Case Name', 'region': 'Region', 'country': 'Country',
+                   'group_entity': 'Group Entity', 'plan_type': 'Plan Type'}[request.group_by]
+        id_to_dim = app_state.case_listing.set_index('ID')[dim_col].fillna('Unknown').replace('', 'Unknown')
+        label, factor = unit(request.metric)[0], unit(request.metric)[1]
+        b_rows = b.loc[b.Metric == request.metric].copy()
+        s_rows = s.loc[s.Metric == request.metric].copy()
+        b_rows = b_rows.loc[b_rows.Year.isin(years)]
+        s_rows = s_rows.loc[s_rows.Year.isin(years)]
+        b_rows['_dim'] = b_rows['ID'].map(id_to_dim).fillna('Unknown')
+        s_rows['_dim'] = s_rows['ID'].map(id_to_dim).fillna('Unknown')
+        ref_by_year = b_rows.groupby('Year').Value.sum() * factor
+        stacked = s_rows.groupby(['Year', '_dim']).Value.sum() * factor
+        series_keys = sorted(s_rows['_dim'].unique().tolist())
+        rows_out = []
+        for y in years:
+            row = {'year': y, 'reference': float(ref_by_year.get(y, 0))}
+            for sk in series_keys:
+                row[sk] = float(stacked.get((y, sk), 0))
+            rows_out.append(row)
+        return {'unit': label, 'series': series_keys, 'rows': rows_out}
     def totals(data, metric):
         selected = data.loc[(data.Metric == metric) & data.Year.isin(years)]
         return selected.groupby('ID').Value.sum()

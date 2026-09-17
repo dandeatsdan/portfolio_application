@@ -6,8 +6,9 @@ export const KPI_TITLES = ['Cumulative Production', 'Cumulative Cash Capex', 'Cu
 export const BREAKDOWNS = { plan_type: 'Plan Type', group_entity: 'Group Entity', region: 'Region', country: 'Country', case_name: 'Case' }
 export const DEFAULT_RESULTS_SETTINGS = {
   primary: 'current', comparison: '', yearFrom: 2026, yearTo: 2040,
-  plot1: { metric: 'Total Production (mboed)', breakdown: 'case_name' },
+  plot1: { metric: 'Total Production (mboed)', breakdown: 'region' },
   plot2: { metric: 'Post-Tax Cash Flow', breakdown: 'region' },
+  plot3: { metric: 'Cash Capex', breakdown: 'region' },
   changes: { metric: 'Post-Tax Cash Flow', period: 'full' },
 }
 export const copySettings = settings => structuredClone(settings)

@@ -263,6 +263,14 @@ def reference_version():
     return digest.hexdigest()
 
 
+def _solver_cases(case_listing: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """Return case listing with Overview rows removed, and the count excluded."""
+    if 'Meta Data' not in case_listing.columns:
+        return case_listing, 0
+    mask = case_listing['Meta Data'].str.strip().str.lower() == 'overview'
+    return case_listing[~mask].reset_index(drop=True), int(mask.sum())
+
+
 @router.get('/reference-version')
 def get_reference_version():
     return {'reference_version': reference_version()}
@@ -271,8 +279,9 @@ def get_reference_version():
 @router.post('/preview')
 def preview(request: OptimisationRequest):
     try:
-        spec = resolve_case_controls(app_state.case_listing, build_spec(request))
-        _, _, limits, _ = prepare_coefficients(app_state.profiles, app_state.case_listing, spec)
+        cases, _ = _solver_cases(app_state.case_listing)
+        spec = resolve_case_controls(cases, build_spec(request))
+        _, _, limits, _ = prepare_coefficients(app_state.profiles, cases, spec)
         return {'reference_version': reference_version(),
                 'limits': [{k: v for k, v in limit.items() if k != 'coefficients'} for limit in limits]}
     except ValueError as exc:
@@ -288,10 +297,14 @@ def solve(request: OptimisationRequest):
         version = reference_version()
         if request.expected_reference_version and request.expected_reference_version != version:
             raise HTTPException(409, detail='Reference data changed. Refresh the preview and optimise again.')
-        result = optimise(app_state.profiles, app_state.raw_profiles, app_state.case_listing, app_state.tax_rates, spec)
+        cases, overview_count = _solver_cases(app_state.case_listing)
+        result = optimise(app_state.profiles, app_state.raw_profiles, cases, app_state.tax_rates, spec)
         if version != reference_version():
             raise HTTPException(409, detail='Reference data changed during optimisation. Optimise again.')
-        return {**result, 'reference_version': version}
+        diagnostics = list(result.get('diagnostics', []))
+        if overview_count:
+            diagnostics.insert(0, f'{overview_count} overview case{"s" if overview_count != 1 else ""} excluded from optimisation (aggregate rows).')
+        return {**result, 'diagnostics': diagnostics, 'reference_version': version}
     except HTTPException:
         raise
     except ValueError as exc:
