@@ -19,17 +19,17 @@
 # The formula, step by step
 # -------------------------
 # For each selected year's cash flow:
-#   period = Year - 2026 + 1
+#   period = Year - 2026 + 0.5   (mid-year convention: cash received mid-year)
 #   present value = cash flow / (1 + discount_rate / 100) ** period
 # Then sum those present values for each case (and scenario, if supplied).
-# At 8%, $108m in 2026 contributes $100m of NPV: 108 / 1.08.
+# At 7% mid-year, $100m in 2026 contributes ~$96.7m of NPV: 100 / 1.07^0.5.
 #
 # The valuation origin stays fixed
 # -------------------------------
-# 2026 is period 1, not period 0. If the user selects 2028–2030, the
-# calculation uses periods 3–5. Changing the visible year range does not
-# reset 2028 to period 1. This matters when comparing filtered results.
-# The default discount rate is 8%; callers can supply another valid rate.
+# 2026 is period 0.5, not period 0. If the user selects 2028–2030, the
+# calculation uses periods 2.5–4.5. Changing the visible year range does not
+# reset 2028 to period 0.5. This matters when comparing filtered results.
+# The default discount rate is 7%; callers can supply another valid rate.
 #
 # Checks and edge cases
 # ---------------------
@@ -57,7 +57,7 @@ from scenario_modeller.data.schemas import YEAR_MIN, YEAR_MAX
 from scenario_modeller.engine.financials import POST_TAX_FCF
 
 NPV_METRIC = "Post-tax NPV"
-DEFAULT_DISCOUNT_RATE = 8.0  # percentage, like the API
+DEFAULT_DISCOUNT_RATE = 7.0
 VALUATION_BASE_YEAR = 2026
 
 
@@ -81,7 +81,7 @@ def npv_by_case(profiles: pd.DataFrame, discount_rate: float = DEFAULT_DISCOUNT_
         raise ValueError("Duplicate post-tax cash-flow rows for valuation")
     if not np.isfinite(fcf["Value"]).all():
         raise ValueError("Non-finite post-tax cash flow")
-    periods = fcf["Year"] - VALUATION_BASE_YEAR + 1
+    periods = fcf["Year"] - VALUATION_BASE_YEAR + 0.5
     fcf["NPV"] = fcf["Value"] / ((1 + discount_rate / 100) ** periods)
     if not np.isfinite(fcf["NPV"]).all():
         raise ValueError("Non-finite discounted cash flow")
