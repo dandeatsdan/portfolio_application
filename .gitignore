@@ -27,3 +27,6 @@ Thumbs.db
 
 # Real BP data — never commit
 data/real/
+
+# Claude Code local settings
+.claude/settings.local.json
