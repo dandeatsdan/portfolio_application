@@ -373,28 +373,27 @@ The declared Streamlit minimum currently permits versions older than the navigat
 From the repository root, install Python dependencies:
 
 ```bash
-python -m pip install -e ./07_streamlit_app
-python -m pip install -r ./08_react_app/backend/requirements.txt
+python -m pip install -e .
+python -m pip install -r ./backend/requirements.txt
 ```
 
 In one terminal, starting at the repository root:
 
 ```bash
-cd 08_react_app
 python -m uvicorn backend.main:app --reload --port 8000
 ```
 
 In another terminal, starting at the repository root:
 
 ```bash
-cd 08_react_app/frontend
+cd frontend
 npm ci
 npm run dev
 ```
 
 Use Node.js/npm compatible with the checked-in Vite dependency. React is served at `http://localhost:5173`; the development proxy forwards `/api` to port 8000. The health endpoint is `/api/health`, and API documentation is at `/docs`.
 
-Use `backend.main:app` from `08_react_app`: `main:app` from inside `backend` is inconsistent with its package-relative imports.
+Use `backend.main:app` from the repository root: `main:app` from inside `backend` is inconsistent with its package-relative imports.
 
 The checked-in configuration is for local development. A frontend build does not host Python or configure production API routing and browser-route fallbacks.
 

@@ -1,0 +1,9 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pandas>=2.0
+pydantic>=2.0
+# Install the scenario-modeller package from the repository root:
+#   pip install -e ../..
+# Reference-case portfolio optimisation: tested with Python 3.14.
+PuLP==3.3.0
+highspy==1.15.1
